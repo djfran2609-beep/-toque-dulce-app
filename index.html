@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f05b92" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Toque Dulce" />
+  <meta name="description" content="Gestión de pedidos y producción para Toque Dulce" />
+  <link rel="manifest" href="manifest.webmanifest" />
+      <style>
+:root {
+  --bg: #fff7fa;
+  --card: #ffffff;
+  --ink: #261d22;
+  --muted: #7a6b73;
+  --line: #f1dfe7;
+  --brand: #f05b92;
+  --brand-2: #ff8db5;
+  --brand-soft: #ffe3ed;
+  --ok: #2f9a68;
+  --warn: #d78a16;
+  --danger: #d94b63;
+  --shadow: 0 10px 30px rgba(83, 39, 58, .08);
+  --radius: 20px;
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: linear-gradient(180deg, #fff4f8 0%, #fffafb 36%, #fff7fa 100%);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+.app-shell { min-height: 100vh; padding-bottom: calc(92px + env(safe-area-inset-bottom)); }
+.topbar {
+  position: sticky; top: 0; z-index: 30;
+  padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+  background: rgba(255, 247, 250, .9);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid rgba(241,223,231,.8);
+}
+.topbar-row { max-width: 980px; margin: 0 auto; display:flex; align-items:center; gap:12px; }
+.brand-mark {
+  width: 42px; height:42px; border-radius:14px; display:grid; place-items:center;
+  background: linear-gradient(135deg, var(--brand), var(--brand-2)); color:white; font-size:21px; box-shadow: var(--shadow);
+}
+.top-title { flex:1; min-width:0; }
+.top-title h1 { margin:0; font-size:19px; letter-spacing:-.3px; }
+.top-title p { margin:2px 0 0; font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.icon-btn { border:0; width:40px; height:40px; border-radius:13px; background:#fff; color:var(--ink); box-shadow:0 3px 12px rgba(83,39,58,.06); }
+.main { max-width:980px; margin:0 auto; padding:18px 14px 32px; }
+.bottom-nav {
+  position:fixed; left:0; right:0; bottom:0; z-index:40;
+  padding:8px 10px calc(8px + env(safe-area-inset-bottom));
+  background:rgba(255,255,255,.94); backdrop-filter:blur(20px); border-top:1px solid var(--line);
+}
+.bottom-nav-inner { max-width:620px; margin:0 auto; display:grid; grid-template-columns:repeat(5,1fr); gap:5px; }
+.nav-btn { border:0; background:transparent; color:var(--muted); border-radius:14px; padding:7px 3px 5px; font-size:10px; font-weight:700; }
+.nav-btn span { display:block; font-size:20px; line-height:23px; margin-bottom:2px; }
+.nav-btn.active { color:var(--brand); background:var(--brand-soft); }
+.hero { display:flex; gap:12px; align-items:flex-end; justify-content:space-between; margin-bottom:14px; }
+.hero h2 { margin:0; font-size:27px; letter-spacing:-.8px; }
+.hero p { margin:5px 0 0; color:var(--muted); font-size:14px; }
+.week-pill { border:1px solid var(--line); background:#fff; border-radius:999px; padding:8px 11px; font-size:12px; color:var(--muted); white-space:nowrap; }
+.grid { display:grid; gap:12px; }
+.grid-2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.grid-3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.card { background:var(--card); border:1px solid rgba(241,223,231,.85); border-radius:var(--radius); box-shadow:var(--shadow); padding:16px; }
+.stat-card { min-height:122px; display:flex; flex-direction:column; justify-content:space-between; }
+.stat-card .eyebrow { color:var(--muted); font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.45px; }
+.stat-card .value { font-size:25px; font-weight:850; letter-spacing:-.7px; margin-top:8px; }
+.stat-card .sub { font-size:12px; color:var(--muted); margin-top:4px; }
+.section { margin-top:22px; }
+.section-title { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; }
+.section-title h3 { margin:0; font-size:17px; letter-spacing:-.2px; }
+.section-title small { color:var(--muted); }
+.action-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.action-card { border:1px solid var(--line); background:#fff; border-radius:18px; padding:15px; text-align:left; color:var(--ink); min-height:92px; box-shadow:0 6px 18px rgba(83,39,58,.045); }
+.action-card .ico { font-size:24px; }
+.action-card strong { display:block; margin-top:8px; font-size:14px; }
+.action-card small { color:var(--muted); display:block; margin-top:3px; line-height:1.3; }
+.btn { border:0; border-radius:14px; padding:12px 14px; font-weight:800; color:var(--ink); background:#f5edf1; }
+.btn.primary { color:white; background:linear-gradient(135deg,var(--brand),var(--brand-2)); }
+.btn.ghost { background:#fff; border:1px solid var(--line); }
+.btn.danger { color:white; background:var(--danger); }
+.btn.ok { color:white; background:var(--ok); }
+.btn.small { padding:8px 10px; font-size:12px; border-radius:11px; }
+.btn.wide { width:100%; }
+.fab { position:fixed; right:18px; bottom:calc(95px + env(safe-area-inset-bottom)); z-index:35; border:0; border-radius:18px; padding:14px 17px; background:linear-gradient(135deg,var(--brand),var(--brand-2)); color:white; font-weight:850; box-shadow:0 12px 25px rgba(240,91,146,.28); }
+.list { display:grid; gap:9px; }
+.list-item { background:#fff; border:1px solid var(--line); border-radius:16px; padding:13px 14px; display:flex; align-items:center; gap:11px; }
+.list-item.clickable { cursor:pointer; }
+.list-item .grow { flex:1; min-width:0; }
+.list-item strong { display:block; font-size:14px; }
+.list-item small { display:block; color:var(--muted); margin-top:3px; line-height:1.35; }
+.amount { font-weight:850; white-space:nowrap; }
+.badge { display:inline-flex; align-items:center; border-radius:999px; padding:5px 8px; font-size:10px; font-weight:850; background:var(--brand-soft); color:#a93561; }
+.badge.ok { background:#e6f7ef; color:#257f57; }
+.badge.warn { background:#fff2da; color:#9d6510; }
+.badge.gray { background:#f1edef; color:#74666d; }
+.divider { height:1px; background:var(--line); margin:14px 0; }
+.total-box { background:linear-gradient(135deg,#fff0f5,#ffe3ed); border:1px solid #ffd3e3; border-radius:20px; padding:17px; }
+.total-box .label { color:#9b4968; font-size:11px; font-weight:900; text-transform:uppercase; letter-spacing:.5px; }
+.total-box .big { font-size:30px; font-weight:900; margin-top:5px; letter-spacing:-1px; }
+.total-box .meta { color:#8b6574; margin-top:5px; font-size:13px; }
+.field { margin-bottom:13px; }
+.field label { display:block; font-size:12px; font-weight:800; margin-bottom:6px; color:#604d56; }
+.input, .select, .textarea { width:100%; border:1px solid var(--line); background:#fff; color:var(--ink); border-radius:14px; padding:12px 13px; outline:none; }
+.input:focus, .select:focus, .textarea:focus { border-color:#f7a5c2; box-shadow:0 0 0 3px rgba(240,91,146,.10); }
+.textarea { min-height:85px; resize:vertical; }
+.form-row { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.qty-row { display:grid; grid-template-columns:minmax(0,1fr) 84px 105px; gap:9px; align-items:center; padding:10px 0; border-bottom:1px solid #f4e8ed; }
+.qty-row:last-child { border-bottom:0; }
+.qty-name strong { display:block; font-size:13px; }
+.qty-name small { color:var(--muted); font-size:11px; }
+.qty-input { width:100%; text-align:center; border:1px solid var(--line); border-radius:12px; padding:10px 5px; }
+.subtotal { text-align:right; font-size:12px; font-weight:800; }
+.toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.segmented { display:flex; background:#f5edf1; border-radius:14px; padding:3px; gap:3px; }
+.segmented button { flex:1; border:0; background:transparent; border-radius:11px; padding:9px 7px; font-size:11px; font-weight:800; color:var(--muted); }
+.segmented button.active { background:#fff; color:var(--ink); box-shadow:0 2px 8px rgba(83,39,58,.06); }
+.empty { text-align:center; color:var(--muted); padding:32px 16px; }
+.empty .icon { font-size:36px; }
+.empty strong { color:var(--ink); display:block; margin-top:8px; }
+.modal-backdrop { position:fixed; inset:0; z-index:80; background:rgba(31,18,24,.34); display:flex; align-items:flex-end; justify-content:center; }
+.modal { width:100%; max-width:680px; max-height:92vh; overflow:auto; background:#fff; border-radius:26px 26px 0 0; padding:18px 16px calc(22px + env(safe-area-inset-bottom)); box-shadow:0 -10px 40px rgba(47,25,34,.16); }
+.modal-head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; }
+.modal-head h3 { margin:0; font-size:20px; }
+.close-btn { width:36px; height:36px; border:0; border-radius:11px; background:#f6eef2; }
+.recipe-row { display:grid; grid-template-columns:minmax(0,1.4fr) 90px 70px 34px; gap:7px; align-items:center; margin-bottom:8px; }
+.recipe-row select, .recipe-row input { width:100%; border:1px solid var(--line); border-radius:11px; padding:9px 7px; min-width:0; }
+.kicker { font-size:11px; text-transform:uppercase; color:var(--muted); letter-spacing:.5px; font-weight:900; }
+.progress-item { border:1px solid var(--line); background:#fff; border-radius:16px; padding:13px; }
+.progress-item-head { display:flex; align-items:center; gap:10px; }
+.progress-item-head .name { flex:1; font-weight:850; }
+.progress-item-head .qty { font-size:21px; font-weight:900; }
+.status-btns { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; margin-top:10px; }
+.status-btns button { border:0; border-radius:10px; padding:8px 3px; font-size:10px; font-weight:800; background:#f3edf0; color:var(--muted); }
+.status-btns button.active.pending { background:#f0edef; color:#665a60; }
+.status-btns button.active.doing { background:#fff0d6; color:#9b6517; }
+.status-btns button.active.done { background:#e1f6eb; color:#247b53; }
+.money-line { display:flex; justify-content:space-between; gap:10px; align-items:center; padding:7px 0; }
+.money-line span { color:var(--muted); font-size:13px; }
+.money-line strong { font-size:14px; }
+.table-like { display:grid; gap:7px; }
+.table-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; padding:10px 0; border-bottom:1px solid #f3e7ec; }
+.table-row:last-child { border-bottom:0; }
+.table-row small { color:var(--muted); }
+.toast { position:fixed; left:50%; bottom:calc(100px + env(safe-area-inset-bottom)); transform:translateX(-50%) translateY(20px); z-index:120; background:#2c2227; color:#fff; border-radius:999px; padding:10px 14px; font-size:12px; opacity:0; pointer-events:none; transition:.22s; white-space:nowrap; max-width:90vw; overflow:hidden; text-overflow:ellipsis; }
+.toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+.note { border:1px dashed #efc7d7; background:#fff7fa; color:#795c69; border-radius:14px; padding:11px 12px; font-size:12px; line-height:1.45; }
+.search { position:relative; margin-bottom:11px; }
+.search input { width:100%; padding:11px 12px 11px 36px; border:1px solid var(--line); border-radius:14px; background:#fff; }
+.search span { position:absolute; left:12px; top:10px; }
+@media (min-width:720px) {
+  .main { padding:24px 20px 50px; }
+  .grid-2-md { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .grid-3-md { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .action-grid { grid-template-columns:repeat(4,minmax(0,1fr)); }
+  .modal { border-radius:26px; margin:40px; max-height:86vh; }
+  .modal-backdrop { align-items:center; }
+}
+@media (max-width:430px) {
+  .grid-2 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .stat-card { min-height:112px; padding:13px; }
+  .stat-card .value { font-size:22px; }
+  .qty-row { grid-template-columns:minmax(0,1fr) 70px 90px; }
+  .recipe-row { grid-template-columns:minmax(0,1fr) 70px 58px 32px; }
+}
+
+</style>
+  <title>Toque Dulce</title>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="toast" class="toast" aria-live="polite"></div>
+  <script>
+const STORAGE_KEY = 'toque_dulce_pwa_v1';
+let state;
+let currentView = 'dashboard';
+let toastTimer;
+
+const $ = (sel, root=document) => root.querySelector(sel);
+const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
+const uid = (prefix='id') => `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,7)}`;
+const n = v => Number(v || 0);
+const int = v => Math.max(0, Math.floor(Number(v || 0)));
+const money = v => new Intl.NumberFormat('es-AR', {style:'currency', currency:'ARS', maximumFractionDigits:0}).format(n(v));
+const qtyFmt = v => new Intl.NumberFormat('es-AR', {maximumFractionDigits:2}).format(n(v));
+const esc = (s='') => String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+
+function todayISO(){ return new Date().toISOString().slice(0,10); }
+function weekLabel(dateStr=todayISO()) {
+  const d = new Date(`${dateStr}T12:00:00`);
+  return `Semana ${new Intl.DateTimeFormat('es-AR',{day:'numeric',month:'long',year:'numeric'}).format(d)}`;
+}
+function baseUnit(unit){ return unit === 'kg' || unit === 'g' ? 'g' : unit === 'l' || unit === 'ml' ? 'ml' : 'u'; }
+function toBase(qty, unit){ if(unit==='kg'||unit==='l') return n(qty)*1000; return n(qty); }
+function ingredientCostPerBase(ing){ const q = toBase(ing.purchaseQty, ing.unit); return q > 0 ? n(ing.purchasePrice)/q : 0; }
+function smartQty(qty, unit){
+  qty=n(qty);
+  if(unit==='g' && qty>=1000) return `${qtyFmt(qty/1000)} kg`;
+  if(unit==='ml' && qty>=1000) return `${qtyFmt(qty/1000)} l`;
+  if(unit==='u') return `${qtyFmt(qty)} u`;
+  return `${qtyFmt(qty)} ${unit}`;
+}
+
+function seedState(){
+  const ingredients = [
+    {id:'ing_oreo',name:'Masitas Oreo',purchasePrice:1560,purchaseQty:118,unit:'g',active:true},
+    {id:'ing_chocolinas',name:'Chocolinas negras',purchasePrice:2200,purchaseQty:252,unit:'g',active:true},
+    {id:'ing_bizco',name:'Bizcochuelo',purchasePrice:5200,purchaseQty:750,unit:'g',active:true},
+    {id:'ing_crema',name:'Crema',purchasePrice:6970,purchaseQty:1,unit:'kg',active:true},
+    {id:'ing_queso',name:'Queso crema',purchasePrice:7670,purchaseQty:1,unit:'kg',active:true},
+    {id:'ing_dulce',name:'Dulce de leche',purchasePrice:50500,purchaseQty:10,unit:'kg',active:true},
+    {id:'ing_pasta_dolca',name:'Pasta Dolca',purchasePrice:7500,purchaseQty:1,unit:'unit',active:true,note:'Cantidad del envase pendiente'},
+    {id:'ing_pasta_frutilla',name:'Pasta Frutilla',purchasePrice:7500,purchaseQty:1,unit:'unit',active:true,note:'Cantidad del envase pendiente'},
+    {id:'ing_pasta_bon',name:'Pasta Bon o Bon',purchasePrice:8000,purchaseQty:1,unit:'unit',active:true,note:'Cantidad del envase pendiente'},
+    {id:'ing_vainilla',name:'Vainilla',purchasePrice:3017,purchaseQty:196,unit:'g',active:true},
+    {id:'ing_vocacion',name:'Masitas Vocación',purchasePrice:2200,purchaseQty:435,unit:'g',active:true},
+    {id:'ing_vaso',name:'Vaso',purchasePrice:426,purchaseQty:1,unit:'unit',active:true},
+    {id:'ing_etiqueta',name:'Etiqueta',purchasePrice:300,purchaseQty:1,unit:'unit',active:true},
+    {id:'ing_cuchara',name:'Cucharita',purchasePrice:40,purchaseQty:1,unit:'unit',active:true},
+    {id:'ing_bon',name:'Bon o Bon',purchasePrice:450,purchaseQty:1,unit:'unit',active:true},
+    {id:'ing_cadbury',name:'Cadbury',purchasePrice:2500,purchaseQty:162,unit:'g',active:true},
+    {id:'ing_bananita',name:'Bananita Dolca',purchasePrice:981,purchaseQty:1,unit:'unit',active:true},
+    {id:'ing_dos',name:'Dos Corazones',purchasePrice:1206,purchaseQty:1,unit:'unit',active:true},
+    {id:'ing_franui',name:'Franui',purchasePrice:5500,purchaseQty:25,unit:'unit',active:true},
+    {id:'ing_rasta',name:'Alfajor Rasta',purchasePrice:1200,purchaseQty:1,unit:'unit',active:true},
+    {id:'ing_mermelada',name:'Mermelada',purchasePrice:4500,purchaseQty:1,unit:'unit',active:true,note:'Tamaño del envase pendiente'},
+    {id:'ing_chocolate',name:'Chocolate para ganache',purchasePrice:7578,purchaseQty:500,unit:'g',active:true},
+    {id:'ing_bolitas',name:'Bolitas de cereal',purchasePrice:4245,purchaseQty:186,unit:'g',active:true},
+    {id:'ing_crema_oreo',name:'Crema Oreo preparada',purchasePrice:0,purchaseQty:1,unit:'g',active:true,note:'Preparación: completar receta/costo'},
+    {id:'ing_crema_choco',name:'Crema chocotorta preparada',purchasePrice:0,purchaseQty:1,unit:'g',active:true,note:'Preparación: completar receta/costo'},
+    {id:'ing_crema_bon',name:'Crema Bon o Bon preparada',purchasePrice:0,purchaseQty:1,unit:'g',active:true,note:'Preparación: completar receta/costo'},
+    {id:'ing_crema_dolca',name:'Crema Dolca preparada',purchasePrice:0,purchaseQty:1,unit:'g',active:true,note:'Preparación: completar receta/costo'},
+    {id:'ing_crema_cadbury',name:'Crema Cadbury preparada',purchasePrice:0,purchaseQty:1,unit:'g',active:true,note:'Preparación: completar receta/costo'},
+    {id:'ing_crema_dos',name:'Crema Dos Corazones preparada',purchasePrice:0,purchaseQty:1,unit:'g',active:true,note:'Preparación: completar receta/costo'}
+  ];
+  const pack = [{ingredientId:'ing_vaso',qty:1},{ingredientId:'ing_etiqueta',qty:1},{ingredientId:'ing_cuchara',qty:1}];
+  const products = [
+    {id:'p_bomba',name:'Bomba Oreo',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_oreo',qty:67},{ingredientId:'ing_dulce',qty:100},{ingredientId:'ing_crema',qty:56},{ingredientId:'ing_crema_oreo',qty:30},...pack]},
+    {id:'p_choco',name:'Chocotorta',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_chocolinas',qty:105},{ingredientId:'ing_crema_choco',qty:110},...pack]},
+    {id:'p_tiramisu',name:'Tiramisú',active:true,businessPrice:null,publicPrice:null,notes:'Receta pendiente de completar.',recipe:[...pack]},
+    {id:'p_cheese',name:'Cheesecake',active:true,businessPrice:null,publicPrice:null,notes:'Receta pendiente de completar.',recipe:[...pack]},
+    {id:'p_bon',name:'Bon o Bon',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_bizco',qty:30},{ingredientId:'ing_dulce',qty:110},{ingredientId:'ing_crema_bon',qty:70},{ingredientId:'ing_bon',qty:1},...pack]},
+    {id:'p_rasta',name:'Rasta',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_vocacion',qty:60},{ingredientId:'ing_dulce',qty:116},{ingredientId:'ing_crema',qty:70},{ingredientId:'ing_rasta',qty:.5},...pack]},
+    {id:'p_franui',name:'Franui',active:true,businessPrice:null,publicPrice:null,notes:'Falta definir el gramaje de la cucharada de mermelada.',recipe:[{ingredientId:'ing_bizco',qty:40},{ingredientId:'ing_crema',qty:73},{ingredientId:'ing_dulce',qty:90},{ingredientId:'ing_franui',qty:1},...pack]},
+    {id:'p_banana',name:'Banana Dolca',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_bizco',qty:30},{ingredientId:'ing_dulce',qty:110},{ingredientId:'ing_crema_dolca',qty:70},{ingredientId:'ing_bananita',qty:.25},...pack]},
+    {id:'p_cadbury',name:'Cadbury',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_vocacion',qty:37},{ingredientId:'ing_dulce',qty:70},{ingredientId:'ing_bizco',qty:25},{ingredientId:'ing_crema_cadbury',qty:70},{ingredientId:'ing_cadbury',qty:40},...pack]},
+    {id:'p_dos',name:'Dos Corazones',active:true,businessPrice:null,publicPrice:null,notes:'Bizcochuelo cargado como promedio de 27,5 g.',recipe:[{ingredientId:'ing_vocacion',qty:37},{ingredientId:'ing_dulce',qty:70},{ingredientId:'ing_bizco',qty:27.5},{ingredientId:'ing_crema_dos',qty:70},{ingredientId:'ing_dos',qty:.5},...pack]},
+    {id:'p_matilda',name:'Matilda',active:true,businessPrice:5500,publicPrice:null,notes:'Receta pendiente de completar.',recipe:[...pack]}
+  ];
+  const weekId = uid('week');
+  return {
+    version:1,
+    settings:{businessPrice:5000,publicPrice:7000},
+    ingredients,
+    products,
+    businesses:[],
+    weeks:[{id:weekId,label:weekLabel(),startDate:todayISO(),status:'open',orders:[],ownProduction:{},publicSales:[],productionStatus:{}}],
+    currentWeekId:weekId
+  };
+}
+
+function loadState(){
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    state = raw ? JSON.parse(raw) : seedState();
+    if(!state || !state.products || !state.weeks) throw new Error('Datos inválidos');
+  } catch(e) {
+    console.warn(e);
+    state = seedState();
+  }
+  saveState(false);
+}
+function saveState(render=true){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); if(render) render(); }
+function currentWeek(){ return state.weeks.find(w=>w.id===state.currentWeekId) || state.weeks.find(w=>w.status==='open') || state.weeks[0]; }
+function product(id){ return state.products.find(p=>p.id===id); }
+function ingredient(id){ return state.ingredients.find(i=>i.id===id); }
+function business(id){ return state.businesses.find(b=>b.id===id); }
+function priceOf(p, channel){ return n(channel==='business' ? (p.businessPrice ?? state.settings.businessPrice) : (p.publicPrice ?? state.settings.publicPrice)); }
+function activeProducts(){ return state.products.filter(p=>p.active).sort((a,b)=>a.name.localeCompare(b.name)); }
+
+function orderQtyTotal(order){ return order.items.reduce((s,i)=>s+n(i.qty),0); }
+function orderMoney(order){ return order.items.reduce((s,i)=>s+n(i.qty)*n(i.unitPrice),0); }
+function businessTotals(week=currentWeek()){
+  return {qty:week.orders.reduce((s,o)=>s+orderQtyTotal(o),0), money:week.orders.reduce((s,o)=>s+orderMoney(o),0)};
+}
+function ownTotals(week=currentWeek()){
+  let qty=0, value=0;
+  Object.entries(week.ownProduction||{}).forEach(([pid,v])=>{ qty+=n(v.qty); value+=n(v.qty)*n(v.unitPrice ?? priceOf(product(pid)||{},'public')); });
+  return {qty,value};
+}
+function salesTotals(week=currentWeek()) { return {qty:week.publicSales.reduce((s,x)=>s+n(x.qty),0),money:week.publicSales.reduce((s,x)=>s+n(x.qty)*n(x.unitPrice),0)}; }
+function stockByProduct(week=currentWeek()){
+  const out={};
+  Object.entries(week.ownProduction||{}).forEach(([pid,v])=>out[pid]=n(v.qty));
+  week.publicSales.forEach(s=>out[s.productId]=(out[s.productId]||0)-n(s.qty));
+  return out;
+}
+function productionByProduct(week=currentWeek()){
+  const out={};
+  week.orders.forEach(o=>o.items.forEach(i=>out[i.productId]=(out[i.productId]||0)+n(i.qty)));
+  Object.entries(week.ownProduction||{}).forEach(([pid,v])=>out[pid]=(out[pid]||0)+n(v.qty));
+  return out;
+}
+function productionSources(pid,week=currentWeek()){
+  const rows=[];
+  week.orders.forEach(o=>{
+    const item=o.items.find(i=>i.productId===pid);
+    if(item && n(item.qty)>0) rows.push({name:business(o.businessId)?.name || 'Negocio',qty:n(item.qty)});
+  });
+  const own=n(week.ownProduction?.[pid]?.qty);
+  if(own) rows.push({name:'Venta al público',qty:own});
+  return rows;
+}
+function ingredientsNeeded(week=currentWeek()){
+  const production=productionByProduct(week), totals={};
+  Object.entries(production).forEach(([pid,q])=>{
+    const p=product(pid); if(!p) return;
+    (p.recipe||[]).forEach(r=>{ totals[r.ingredientId]=(totals[r.ingredientId]||0)+n(r.qty)*n(q); });
+  });
+  return totals;
+}
+
+function ensureOpenWeek(){ if(currentWeek()?.status!=='open'){ showToast('La semana está cerrada. Creá una nueva.'); return false; } return true; }
+
+function showToast(msg){
+  const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),1800);
+}
+function copyText(text){
+  if(navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(()=>showToast('Copiado')).catch(()=>fallbackCopy(text));
+  else fallbackCopy(text);
+}
+function fallbackCopy(text){ const ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); showToast('Copiado'); }
+function closeModal(){ $('.modal-backdrop')?.remove(); }
+function modal(title, body, opts={}){
+  closeModal();
+  const wrap=document.createElement('div'); wrap.className='modal-backdrop';
+  wrap.innerHTML=`<div class="modal"><div class="modal-head"><h3>${esc(title)}</h3><button class="close-btn" onclick="closeModal()">✕</button></div>${body}</div>`;
+  wrap.addEventListener('click',e=>{ if(e.target===wrap && !opts.locked) closeModal(); });
+  document.body.appendChild(wrap); return wrap;
+}
+function go(view){ currentView=view; render(); window.scrollTo({top:0,behavior:'smooth'}); }
+
+function render(){
+  const w=currentWeek();
+  document.getElementById('app').innerHTML=`
+    <div class="app-shell">
+      <header class="topbar"><div class="topbar-row">
+        <div class="brand-mark">🍰</div>
+        <div class="top-title"><h1>Toque Dulce</h1><p>${esc(w?.label||'Sin semana activa')}</p></div>
+        <button class="icon-btn" onclick="go('settings')">⚙️</button>
+      </div></header>
+      <main class="main">${renderView()}</main>
+      <nav class="bottom-nav"><div class="bottom-nav-inner">
+        ${navBtn('dashboard','⌂','Inicio')}
+        ${navBtn('orders','🧾','Pedidos')}
+        ${navBtn('production','🍮','Producción')}
+        ${navBtn('public','🛍️','Público')}
+        ${navBtn('more','⋯','Más')}
+      </div></nav>
+    </div>`;
+}
+function navBtn(view,ico,label){ return `<button class="nav-btn ${currentView===view?'active':''}" onclick="go('${view}')"><span>${ico}</span>${label}</button>`; }
+function hero(title,sub='',right=''){ return `<div class="hero"><div><h2>${title}</h2>${sub?`<p>${sub}</p>`:''}</div>${right}</div>`; }
+
+function renderView(){
+  switch(currentView){
+    case 'orders': return renderOrders();
+    case 'production': return renderProduction();
+    case 'own': return renderOwn();
+    case 'public': return renderPublic();
+    case 'businesses': return renderBusinesses();
+    case 'products': return renderProducts();
+    case 'ingredients': return renderIngredients();
+    case 'history': return renderHistory();
+    case 'settings': return renderSettings();
+    case 'productionMode': return renderProductionMode();
+    case 'shopping': return renderShopping();
+    case 'more': return renderMore();
+    default: return renderDashboard();
+  }
+}
+
+function renderDashboard(){
+  const w=currentWeek(), bt=businessTotals(w), ot=ownTotals(w), st=salesTotals(w), prod=productionByProduct(w);
+  const prodQty=Object.values(prod).reduce((a,b)=>a+n(b),0), stock=Object.values(stockByProduct(w)).reduce((a,b)=>a+Math.max(0,n(b)),0);
+  return `${hero('Esta semana','Todo lo importante en un solo lugar',`<span class="week-pill">${w.status==='open'?'Activa':'Cerrada'}</span>`)}
+    <div class="grid grid-2">
+      <div class="card stat-card"><div><div class="eyebrow">Negocios</div><div class="value">${money(bt.money)}</div></div><div class="sub">${bt.qty} postres · total a cobrar</div></div>
+      <div class="card stat-card"><div><div class="eyebrow">Producción total</div><div class="value">${prodQty}</div></div><div class="sub">postres a fabricar</div></div>
+      <div class="card stat-card"><div><div class="eyebrow">Producción propia</div><div class="value">${ot.qty}</div></div><div class="sub">Potencial ${money(ot.value)}</div></div>
+      <div class="card stat-card"><div><div class="eyebrow">Venta público</div><div class="value">${money(st.money)}</div></div><div class="sub">${st.qty} vendidos · ${stock} en stock</div></div>
+    </div>
+    <div class="section"><div class="section-title"><h3>Accesos rápidos</h3></div><div class="action-grid">
+      ${action('🗓️','Nueva semana','Cerrar y empezar otra',"openNewWeekModal()")}
+      ${action('🧾','Nuevo pedido','Cargar un negocio',"openOrderModal()")}
+      ${action('🍓','Producción propia','Lo que venden ustedes',"go('own')")}
+      ${action('📋','Lista de producción','Suma negocios + público',"go('production')")}
+      ${action('✅','Modo producción','Marcar lo terminado',"go('productionMode')")}
+      ${action('🛒','Ingredientes','Qué necesitás preparar',"go('shopping')")}
+      ${action('🏪','Negocios','Clientes y datos',"go('businesses')")}
+      ${action('🍰','Postres','Precios y recetas',"go('products')")}
+      ${action('📚','Historial','Semanas anteriores',"go('history')")}
+    </div></div>
+    <div class="section"><div class="section-title"><h3>Facturación real</h3></div>
+      <div class="total-box"><div class="label">Negocios + ventas reales al público</div><div class="big">${money(bt.money+st.money)}</div><div class="meta">No descuenta costos de producción.</div></div>
+    </div>`;
+}
+function action(ico,title,sub,on){ return `<button class="action-card" onclick="${on}"><div class="ico">${ico}</div><strong>${esc(title)}</strong><small>${esc(sub)}</small></button>`; }
+
+function renderOrders(){
+  const w=currentWeek(), bt=businessTotals(w);
+  const rows=w.orders.length ? w.orders.map(o=>{
+    const b=business(o.businessId); return `<div class="list-item clickable" onclick="showOrder('${o.id}')"><div class="grow"><strong>${esc(b?.name||'Negocio')}</strong><small>${orderQtyTotal(o)} postres</small></div><div class="amount">${money(orderMoney(o))}</div><span>›</span></div>`;
+  }).join('') : `<div class="empty"><div class="icon">🧾</div><strong>Todavía no cargaste pedidos</strong><div>Agregá el primer negocio de esta semana.</div></div>`;
+  return `${hero('Pedidos','Pedidos de negocios de la semana')}
+    <div class="total-box"><div class="label">Total a cobrar</div><div class="big">${money(bt.money)}</div><div class="meta">${bt.qty} postres · ${w.orders.length} negocios</div></div>
+    <div class="section"><div class="section-title"><h3>Negocios</h3><button class="btn small ghost" onclick="openOrderModal()">+ Pedido</button></div><div class="list">${rows}</div></div>
+    <button class="fab" onclick="openOrderModal()">＋ Nuevo pedido</button>`;
+}
+
+function openOrderModal(orderId=null){
+  if(!ensureOpenWeek()) return;
+  const w=currentWeek();
+  if(!state.businesses.filter(b=>b.active).length){
+    modal('Primero agregá un negocio',`<div class="empty"><div class="icon">🏪</div><strong>No hay negocios activos</strong><div>Creá un negocio y después cargá el pedido.</div></div><button class="btn primary wide" onclick="closeModal();go('businesses');openBusinessModal()">Agregar negocio</button>`); return;
+  }
+  const order=orderId?w.orders.find(o=>o.id===orderId):null;
+  const bOptions=state.businesses.filter(b=>b.active || b.id===order?.businessId).map(b=>`<option value="${b.id}" ${b.id===order?.businessId?'selected':''}>${esc(b.name)}</option>`).join('');
+  const items={}; (order?.items||[]).forEach(i=>items[i.productId]=i);
+  const rows=activeProducts().map(p=>{
+    const old=items[p.id]; const pr=old?n(old.unitPrice):priceOf(p,'business');
+    return `<div class="qty-row"><div class="qty-name"><strong>${esc(p.name)}</strong><small>${money(pr)} c/u</small></div><input class="qty-input order-qty" data-pid="${p.id}" data-price="${pr}" type="number" min="0" step="1" value="${old?.qty||''}" oninput="updateOrderModalTotal()"><div class="subtotal" id="sub_${p.id}">${old?.qty?money(n(old.qty)*pr):'—'}</div></div>`;
+  }).join('');
+  modal(order?'Editar pedido':'Nuevo pedido',`
+    <div class="field"><label>Negocio</label><select id="orderBusiness" class="select">${bOptions}</select></div>
+    <div class="card" style="padding:10px 13px">${rows}</div>
+    <div class="section"><div class="total-box"><div class="label">Total a cobrar</div><div class="big" id="orderModalMoney">${money(order?orderMoney(order):0)}</div><div class="meta" id="orderModalQty">${order?orderQtyTotal(order):0} postres</div></div></div>
+    <div class="form-row section"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="saveOrder('${orderId||''}')">Guardar pedido</button></div>`);
+  updateOrderModalTotal();
+}
+function updateOrderModalTotal(){
+  let q=0,m=0; $$('.order-qty').forEach(inp=>{ const qty=int(inp.value), pr=n(inp.dataset.price); q+=qty; m+=qty*pr; const s=$(`#sub_${inp.dataset.pid}`); if(s)s.textContent=qty?money(qty*pr):'—'; });
+  if($('#orderModalMoney')) $('#orderModalMoney').textContent=money(m); if($('#orderModalQty')) $('#orderModalQty').textContent=`${q} postres`;
+}
+function saveOrder(orderId=''){
+  const w=currentWeek(), businessId=$('#orderBusiness').value;
+  const items=$$('.order-qty').map(inp=>({productId:inp.dataset.pid,qty:int(inp.value),unitPrice:n(inp.dataset.price)})).filter(x=>x.qty>0);
+  if(!items.length){ showToast('Cargá al menos un postre'); return; }
+  let order=orderId?w.orders.find(o=>o.id===orderId):w.orders.find(o=>o.businessId===businessId);
+  if(order){ order.businessId=businessId; order.items=items; order.updatedAt=new Date().toISOString(); }
+  else w.orders.push({id:uid('order'),businessId,items,createdAt:new Date().toISOString()});
+  saveState(false); closeModal(); render(); showToast('Pedido guardado');
+}
+function showOrder(orderId){
+  const w=currentWeek(), o=w.orders.find(x=>x.id===orderId); if(!o)return; const b=business(o.businessId);
+  const rows=o.items.map(i=>`<div class="money-line"><span>${i.qty} × ${esc(product(i.productId)?.name||'Postre')} · ${money(i.unitPrice)}</span><strong>${money(i.qty*i.unitPrice)}</strong></div>`).join('');
+  modal(b?.name||'Pedido',`${rows}<div class="divider"></div><div class="total-box"><div class="label">Total a cobrar</div><div class="big">${money(orderMoney(o))}</div><div class="meta">${orderQtyTotal(o)} postres</div></div><div class="grid grid-2 section"><button class="btn ghost" onclick="copyOrderSummary('${o.id}')">📋 Copiar resumen</button><button class="btn ghost" onclick="closeModal();openOrderModal('${o.id}')">✏️ Editar</button><button class="btn ghost" onclick="duplicateOrder('${o.id}')">⧉ Duplicar</button><button class="btn danger" onclick="deleteOrder('${o.id}')">Eliminar</button></div>`);
+}
+function copyOrderSummary(id){ const o=currentWeek().orders.find(x=>x.id===id); if(!o)return; const b=business(o.businessId); const lines=[`Pedido ${b?.name||''}`,'',...o.items.map(i=>`${i.qty} ${product(i.productId)?.name||'Postres'}`),'',`Total: ${orderQtyTotal(o)} postres`,`Total a pagar: ${money(orderMoney(o))}`]; copyText(lines.join('\n')); }
+function duplicateOrder(id){ const w=currentWeek(), o=w.orders.find(x=>x.id===id); if(!o)return; w.orders.push({...JSON.parse(JSON.stringify(o)),id:uid('order'),createdAt:new Date().toISOString()}); saveState(false); closeModal(); render(); showToast('Pedido duplicado'); }
+function deleteOrder(id){ if(!confirm('¿Eliminar este pedido?'))return; const w=currentWeek(); w.orders=w.orders.filter(o=>o.id!==id); saveState(false); closeModal(); render(); showToast('Pedido eliminado'); }
+
+function renderProduction(){
+  const w=currentWeek(), prod=productionByProduct(w), entries=Object.entries(prod).filter(([,q])=>q>0).sort((a,b)=>(product(a[0])?.name||'').localeCompare(product(b[0])?.name||''));
+  const total=entries.reduce((s,[,q])=>s+n(q),0);
+  const rows=entries.length?entries.map(([pid,q])=>`<div class="list-item clickable" onclick="showProductionDetail('${pid}')"><div class="grow"><strong>${esc(product(pid)?.name||'Postre')}</strong><small>Tocá para ver de dónde sale</small></div><div class="amount" style="font-size:24px">${qtyFmt(q)}</div><span>›</span></div>`).join(''):`<div class="empty"><div class="icon">🍮</div><strong>No hay producción cargada</strong><div>Cargá pedidos o producción propia.</div></div>`;
+  return `${hero('Producción total','Negocios + producción propia')}
+    <div class="total-box"><div class="label">Total a fabricar</div><div class="big">${total} postres</div><div class="meta">${entries.length} variedades</div></div>
+    <div class="section"><div class="section-title"><h3>Por variedad</h3><button class="btn small ghost" onclick="go('productionMode')">Modo producción</button></div><div class="list">${rows}</div></div>
+    <div class="section grid grid-2"><button class="btn ghost" onclick="go('own')">＋ Producción propia</button><button class="btn primary" onclick="go('shopping')">🛒 Ingredientes</button></div>`;
+}
+function showProductionDetail(pid){ const rows=productionSources(pid).map(r=>`<div class="money-line"><span>${esc(r.name)}</span><strong>${qtyFmt(r.qty)}</strong></div>`).join(''); const total=productionByProduct()[pid]||0; modal(product(pid)?.name||'Postre',`${rows}<div class="divider"></div><div class="total-box"><div class="label">Total</div><div class="big">${qtyFmt(total)}</div></div>`); }
+
+function renderOwn(){
+  const w=currentWeek(), rows=activeProducts().map(p=>{
+    const v=w.ownProduction?.[p.id], pr=n(v?.unitPrice ?? priceOf(p,'public'));
+    return `<div class="qty-row"><div class="qty-name"><strong>${esc(p.name)}</strong><small>${money(pr)} potencial c/u</small></div><input class="qty-input own-qty" data-pid="${p.id}" data-price="${pr}" type="number" min="0" step="1" value="${v?.qty||''}" oninput="updateOwnTotal()"><div class="subtotal" id="ownsub_${p.id}">${v?.qty?money(n(v.qty)*pr):'—'}</div></div>`;
+  }).join('');
+  const ot=ownTotals(w);
+  return `${hero('Producción propia','Postres que hacen para vender ustedes')}
+    <div class="note">Esto no cuenta como facturación real hasta que registres la venta al público.</div>
+    <div class="section card" style="padding:10px 13px">${rows}</div>
+    <div class="section total-box"><div class="label">Valor potencial</div><div class="big" id="ownMoney">${money(ot.value)}</div><div class="meta" id="ownQty">${ot.qty} postres</div></div>
+    <button class="btn primary wide section" onclick="saveOwnProduction()">Guardar producción propia</button>`;
+}
+function updateOwnTotal(){ let q=0,m=0; $$('.own-qty').forEach(inp=>{const qty=int(inp.value),pr=n(inp.dataset.price);q+=qty;m+=qty*pr;const el=$(`#ownsub_${inp.dataset.pid}`);if(el)el.textContent=qty?money(qty*pr):'—';}); if($('#ownMoney'))$('#ownMoney').textContent=money(m);if($('#ownQty'))$('#ownQty').textContent=`${q} postres`; }
+function saveOwnProduction(){ if(!ensureOpenWeek()) return; const w=currentWeek(), obj={}; $$('.own-qty').forEach(inp=>{const qty=int(inp.value);if(qty)obj[inp.dataset.pid]={qty,unitPrice:n(inp.dataset.price)};}); w.ownProduction=obj; saveState(false); render(); showToast('Producción propia guardada'); }
+
+function renderPublic(){
+  const w=currentWeek(), stock=stockByProduct(w), st=salesTotals(w), rows=Object.entries(stock).filter(([,q])=>q>0).sort((a,b)=>(product(a[0])?.name||'').localeCompare(product(b[0])?.name||'')).map(([pid,q])=>`<div class="list-item"><div class="grow"><strong>${esc(product(pid)?.name||'Postre')}</strong><small>Disponible para vender</small></div><div class="amount">${qtyFmt(q)}</div></div>`).join('');
+  const sales=w.publicSales.slice().reverse().map(s=>`<div class="list-item"><div class="grow"><strong>${esc(product(s.productId)?.name||'Postre')} × ${s.qty}</strong><small>${new Date(s.date).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</small></div><div class="amount">${money(s.qty*s.unitPrice)}</div><button class="icon-btn" onclick="deleteSale('${s.id}')">🗑</button></div>`).join('');
+  return `${hero('Venta al público','Registrá lo que realmente vendieron')}
+    <div class="grid grid-2"><div class="card stat-card"><div><div class="eyebrow">Facturación real</div><div class="value">${money(st.money)}</div></div><div class="sub">${st.qty} postres vendidos</div></div><div class="card stat-card"><div><div class="eyebrow">Stock</div><div class="value">${Object.values(stock).reduce((s,q)=>s+Math.max(0,n(q)),0)}</div></div><div class="sub">postres disponibles</div></div></div>
+    <div class="section"><div class="section-title"><h3>Stock actual</h3><button class="btn small primary" onclick="openSaleModal()">+ Venta</button></div><div class="list">${rows||'<div class="empty">No hay stock disponible.</div>'}</div></div>
+    <div class="section"><div class="section-title"><h3>Ventas registradas</h3></div><div class="list">${sales||'<div class="empty">Todavía no registraste ventas.</div>'}</div></div>`;
+}
+function openSaleModal(){
+  if(!ensureOpenWeek()) return;
+  const stock=stockByProduct(), options=Object.entries(stock).filter(([,q])=>q>0).map(([pid,q])=>`<option value="${pid}">${esc(product(pid)?.name||'Postre')} · stock ${qtyFmt(q)}</option>`).join('');
+  if(!options){showToast('No hay stock para vender');return;}
+  modal('Registrar venta',`<div class="field"><label>Postre</label><select id="saleProduct" class="select" onchange="updateSalePrice()">${options}</select></div><div class="form-row"><div class="field"><label>Cantidad</label><input id="saleQty" class="input" type="number" min="1" step="1" value="1"></div><div class="field"><label>Precio unitario</label><input id="salePrice" class="input" type="number" min="0" step="100"></div></div><button class="btn primary wide" onclick="saveSale()">Guardar venta</button>`); updateSalePrice();
+}
+function updateSalePrice(){const p=product($('#saleProduct')?.value);if(p&&$('#salePrice'))$('#salePrice').value=priceOf(p,'public');}
+function saveSale(){const w=currentWeek(), pid=$('#saleProduct').value, qty=int($('#saleQty').value), pr=n($('#salePrice').value), stock=n(stockByProduct(w)[pid]); if(qty<1)return showToast('Cantidad inválida'); if(qty>stock)return showToast(`Solo hay ${stock} en stock`); w.publicSales.push({id:uid('sale'),productId:pid,qty,unitPrice:pr,date:new Date().toISOString()}); saveState(false);closeModal();render();showToast('Venta registrada');}
+function deleteSale(id){if(!confirm('¿Eliminar esta venta?'))return;const w=currentWeek();w.publicSales=w.publicSales.filter(s=>s.id!==id);saveState(false);render();showToast('Venta eliminada');}
+
+function renderProductionMode(){
+  const w=currentWeek(), prod=productionByProduct(w), rows=Object.entries(prod).filter(([,q])=>q>0).sort((a,b)=>(product(a[0])?.name||'').localeCompare(product(b[0])?.name||'')).map(([pid,q])=>{
+    const st=w.productionStatus?.[pid]||'pending';
+    return `<div class="progress-item"><div class="progress-item-head"><div class="name">${esc(product(pid)?.name||'Postre')}</div><div class="qty">${qtyFmt(q)}</div></div><div class="status-btns"><button class="pending ${st==='pending'?'active':''}" onclick="setProdStatus('${pid}','pending')">Pendiente</button><button class="doing ${st==='doing'?'active':''}" onclick="setProdStatus('${pid}','doing')">En producción</button><button class="done ${st==='done'?'active':''}" onclick="setProdStatus('${pid}','done')">Terminada</button></div></div>`;
+  }).join('');
+  return `${hero('Modo producción','Marcá el avance sin tocar los pedidos')}<div class="grid">${rows||'<div class="empty">No hay producción cargada.</div>'}</div>`;
+}
+function setProdStatus(pid,status){if(!ensureOpenWeek()) return; const w=currentWeek();w.productionStatus=w.productionStatus||{};w.productionStatus[pid]=status;saveState();}
+
+function renderBusinesses(){
+  const rows=state.businesses.filter(b=>b.active).map(b=>{
+    const allOrders=state.weeks.flatMap(w=>w.orders.filter(o=>o.businessId===b.id)); const qty=allOrders.reduce((s,o)=>s+orderQtyTotal(o),0), amount=allOrders.reduce((s,o)=>s+orderMoney(o),0);
+    return `<div class="list-item clickable" onclick="openBusinessModal('${b.id}')"><div class="grow"><strong>${esc(b.name)}</strong><small>${esc([b.city,b.contact].filter(Boolean).join(' · ')||'Sin datos extra')} · histórico ${qty} postres</small></div><div class="amount">${money(amount)}</div><span>›</span></div>`;
+  }).join('');
+  return `${hero('Negocios','Clientes que compran tus postres')}<div class="list">${rows||'<div class="empty"><div class="icon">🏪</div><strong>No hay negocios</strong><div>Agregá el primero.</div></div>'}</div><button class="fab" onclick="openBusinessModal()">＋ Nuevo negocio</button>`;
+}
+function openBusinessModal(id=''){
+  const b=id?business(id):{};
+  modal(id?'Editar negocio':'Nuevo negocio',`<div class="field"><label>Nombre *</label><input id="bName" class="input" value="${esc(b.name||'')}"></div><div class="form-row"><div class="field"><label>Ciudad</label><input id="bCity" class="input" value="${esc(b.city||'')}"></div><div class="field"><label>Contacto</label><input id="bContact" class="input" value="${esc(b.contact||'')}"></div></div><div class="field"><label>Teléfono</label><input id="bPhone" class="input" value="${esc(b.phone||'')}"></div><div class="field"><label>Dirección</label><input id="bAddress" class="input" value="${esc(b.address||'')}"></div><div class="field"><label>Observaciones</label><textarea id="bNotes" class="textarea">${esc(b.notes||'')}</textarea></div><div class="field"><label><input id="bActive" type="checkbox" ${b.active!==false?'checked':''}> Activo</label></div><div class="grid grid-2"><button class="btn primary" onclick="saveBusiness('${id}')">Guardar</button>${id?`<button class="btn ghost" onclick="deactivateBusiness('${id}')">Desactivar</button>`:'<button class="btn ghost" onclick="closeModal()">Cancelar</button>'}</div>`);
+}
+function saveBusiness(id=''){const name=$('#bName').value.trim();if(!name)return showToast('Escribí el nombre');const data={name,city:$('#bCity').value.trim(),contact:$('#bContact').value.trim(),phone:$('#bPhone').value.trim(),address:$('#bAddress').value.trim(),notes:$('#bNotes').value.trim(),active:$('#bActive').checked};if(id)Object.assign(business(id),data);else state.businesses.push({id:uid('biz'),...data});saveState(false);closeModal();render();showToast('Negocio guardado');}
+function deactivateBusiness(id){business(id).active=false;saveState(false);closeModal();render();showToast('Negocio desactivado');}
+
+function renderProducts(){
+  const rows=state.products.filter(p=>p.active).sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<div class="list-item clickable" onclick="openProductModal('${p.id}')"><div class="grow"><strong>${esc(p.name)}</strong><small>Negocio ${money(priceOf(p,'business'))} · Público ${money(priceOf(p,'public'))} · ${(p.recipe||[]).length} ítems en receta</small></div><span>›</span></div>`).join('');
+  const inactive=state.products.filter(p=>!p.active).length;
+  return `${hero('Postres','Precios, recetas y nuevas variedades')}<div class="note">Podés crear postres nuevos desde acá. No hace falta tocar el código.</div><div class="section list">${rows}</div>${inactive?`<div class="section"><button class="btn ghost wide" onclick="showInactiveProducts()">Ver ${inactive} desactivados</button></div>`:''}<button class="fab" onclick="openProductModal()">＋ Nuevo postre</button>`;
+}
+function showInactiveProducts(){const rows=state.products.filter(p=>!p.active).map(p=>`<div class="list-item"><div class="grow"><strong>${esc(p.name)}</strong><small>Desactivado</small></div><button class="btn small" onclick="reactivateProduct('${p.id}')">Reactivar</button></div>`).join('');modal('Postres desactivados',`<div class="list">${rows}</div>`);}
+function reactivateProduct(id){product(id).active=true;saveState(false);closeModal();render();showToast('Postre reactivado');}
+function openProductModal(id=''){
+  const p=id?product(id):{active:true,recipe:[]};
+  modal(id?'Editar postre':'Nuevo postre',`<div class="field"><label>Nombre *</label><input id="pName" class="input" value="${esc(p.name||'')}"></div><div class="form-row"><div class="field"><label>Precio especial negocio</label><input id="pBizPrice" class="input" type="number" placeholder="Usar general" value="${p.businessPrice??''}"></div><div class="field"><label>Precio especial público</label><input id="pPubPrice" class="input" type="number" placeholder="Usar general" value="${p.publicPrice??''}"></div></div><div class="field"><label>Notas</label><textarea id="pNotes" class="textarea">${esc(p.notes||'')}</textarea></div><div class="field"><label><input id="pActive" type="checkbox" ${p.active!==false?'checked':''}> Activo</label></div><div class="section-title"><h3>Receta</h3><button class="btn small ghost" onclick="addRecipeRow()">+ Ingrediente</button></div><div id="recipeRows"></div><div class="note">Las cantidades de receta se cargan en g, ml o unidades según el ingrediente.</div><div class="grid grid-2 section"><button class="btn primary" onclick="saveProduct('${id}')">Guardar postre</button>${id?`<button class="btn ghost" onclick="deactivateProduct('${id}')">Desactivar</button>`:'<button class="btn ghost" onclick="closeModal()">Cancelar</button>'}</div>`);
+  (p.recipe||[]).forEach(r=>addRecipeRow(r.ingredientId,r.qty));
+  if(!(p.recipe||[]).length) addRecipeRow();
+}
+function ingredientOptions(selected=''){return state.ingredients.filter(i=>i.active || i.id===selected).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>`<option value="${i.id}" ${i.id===selected?'selected':''}>${esc(i.name)}</option>`).join('');}
+function addRecipeRow(ingredientId='',qty=''){
+  const box=$('#recipeRows'); if(!box)return; const row=document.createElement('div');row.className='recipe-row';
+  row.innerHTML=`<select class="recipe-ing" onchange="updateRecipeUnit(this)"><option value="">Ingrediente...</option>${ingredientOptions(ingredientId)}</select><input class="recipe-qty" type="number" min="0" step="0.1" value="${qty}"><span class="badge gray recipe-unit">${ingredientId?baseUnit(ingredient(ingredientId)?.unit):'—'}</span><button class="close-btn" onclick="this.parentElement.remove()">−</button>`;box.appendChild(row);
+}
+function updateRecipeUnit(sel){const ing=ingredient(sel.value);$('.recipe-unit',sel.parentElement).textContent=ing?baseUnit(ing.unit):'—';}
+function saveProduct(id=''){
+  const name=$('#pName').value.trim();if(!name)return showToast('Escribí el nombre');
+  const recipe=$$('#recipeRows .recipe-row').map(row=>({ingredientId:$('.recipe-ing',row).value,qty:n($('.recipe-qty',row).value)})).filter(r=>r.ingredientId&&r.qty>0);
+  const biz=$('#pBizPrice').value.trim(), pub=$('#pPubPrice').value.trim();
+  const data={name,businessPrice:biz===''?null:n(biz),publicPrice:pub===''?null:n(pub),notes:$('#pNotes').value.trim(),active:$('#pActive').checked,recipe};
+  if(id)Object.assign(product(id),data); else state.products.push({id:uid('prod'),...data});
+  saveState(false);closeModal();render();showToast('Postre guardado');
+}
+function deactivateProduct(id){product(id).active=false;saveState(false);closeModal();render();showToast('Postre desactivado');}
+
+function renderIngredients(){
+  const rows=state.ingredients.filter(i=>i.active).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>`<div class="list-item clickable" onclick="openIngredientModal('${i.id}')"><div class="grow"><strong>${esc(i.name)}</strong><small>${money(i.purchasePrice)} / ${qtyFmt(i.purchaseQty)} ${i.unit==='unit'?'unidad(es)':i.unit} · ${money(ingredientCostPerBase(i))} por ${baseUnit(i.unit)}</small>${i.note?`<small>⚠️ ${esc(i.note)}</small>`:''}</div><span>›</span></div>`).join('');
+  return `${hero('Materia prima','Actualizá un precio una sola vez')}<div class="list">${rows}</div><button class="fab" onclick="openIngredientModal()">＋ Ingrediente</button>`;
+}
+function openIngredientModal(id=''){
+  const i=id?ingredient(id):{active:true,unit:'g'};
+  modal(id?'Editar ingrediente':'Nuevo ingrediente',`<div class="field"><label>Nombre *</label><input id="iName" class="input" value="${esc(i.name||'')}"></div><div class="form-row"><div class="field"><label>Precio pagado</label><input id="iPrice" class="input" type="number" min="0" value="${i.purchasePrice??''}"></div><div class="field"><label>Cantidad comprada</label><input id="iQty" class="input" type="number" min="0" step="0.01" value="${i.purchaseQty??''}"></div></div><div class="field"><label>Unidad de compra</label><select id="iUnit" class="select"><option value="g" ${i.unit==='g'?'selected':''}>gramos</option><option value="kg" ${i.unit==='kg'?'selected':''}>kilogramos</option><option value="ml" ${i.unit==='ml'?'selected':''}>mililitros</option><option value="l" ${i.unit==='l'?'selected':''}>litros</option><option value="unit" ${i.unit==='unit'?'selected':''}>unidades</option></select></div><div class="field"><label>Nota</label><textarea id="iNote" class="textarea">${esc(i.note||'')}</textarea></div><div class="field"><label><input id="iActive" type="checkbox" ${i.active!==false?'checked':''}> Activo</label></div><div class="grid grid-2"><button class="btn primary" onclick="saveIngredient('${id}')">Guardar</button>${id?`<button class="btn ghost" onclick="deactivateIngredient('${id}')">Desactivar</button>`:'<button class="btn ghost" onclick="closeModal()">Cancelar</button>'}</div>`);
+}
+function saveIngredient(id=''){const name=$('#iName').value.trim();if(!name)return showToast('Escribí el nombre');const data={name,purchasePrice:n($('#iPrice').value),purchaseQty:n($('#iQty').value),unit:$('#iUnit').value,note:$('#iNote').value.trim(),active:$('#iActive').checked};if(id)Object.assign(ingredient(id),data);else state.ingredients.push({id:uid('ing'),...data});saveState(false);closeModal();render();showToast('Ingrediente guardado');}
+function deactivateIngredient(id){ingredient(id).active=false;saveState(false);closeModal();render();showToast('Ingrediente desactivado');}
+
+function renderShopping(){
+  const totals=ingredientsNeeded(), rows=Object.entries(totals).filter(([,q])=>q>0).sort((a,b)=>(ingredient(a[0])?.name||'').localeCompare(ingredient(b[0])?.name||'')).map(([iid,q])=>{const ing=ingredient(iid);return `<div class="list-item"><div class="grow"><strong>${esc(ing?.name||'Ingrediente')}</strong><small>Según recetas y producción total</small></div><div class="amount">${smartQty(q,baseUnit(ing?.unit||'unit'))}</div></div>`;}).join('');
+  return `${hero('Ingredientes necesarios','Calculado desde las recetas')}<div class="note">Si una receta está incompleta, esta lista también lo estará. Podés editar cualquier receta desde Postres.</div><div class="section list">${rows||'<div class="empty">No hay ingredientes para calcular.</div>'}</div><button class="btn primary wide section" onclick="copyShoppingList()">📋 Copiar lista</button>`;
+}
+function copyShoppingList(){const totals=ingredientsNeeded(), lines=['Lista de producción · Toque Dulce',''];Object.entries(totals).filter(([,q])=>q>0).sort((a,b)=>(ingredient(a[0])?.name||'').localeCompare(ingredient(b[0])?.name||'')).forEach(([iid,q])=>{const ing=ingredient(iid);lines.push(`• ${ing?.name||'Ingrediente'}: ${smartQty(q,baseUnit(ing?.unit||'unit'))}`);});copyText(lines.join('\n'));}
+
+function renderHistory(){
+  const rows=state.weeks.slice().sort((a,b)=>b.startDate.localeCompare(a.startDate)).map(w=>{const bt=businessTotals(w),st=salesTotals(w),prod=productionByProduct(w),q=Object.values(prod).reduce((a,b)=>a+n(b),0);return `<div class="list-item clickable" onclick="showWeekSummary('${w.id}')"><div class="grow"><strong>${esc(w.label)}</strong><small>${w.status==='open'?'Activa':'Cerrada'} · ${q} producidos · ${money(bt.money+st.money)} facturación real</small></div><span class="badge ${w.status==='open'?'ok':'gray'}">${w.status==='open'?'ACTIVA':'CERRADA'}</span><span>›</span></div>`;}).join('');
+  return `${hero('Historial','Semanas y tandas anteriores')}<div class="toolbar"><button class="btn primary" onclick="openNewWeekModal()">＋ Nueva semana</button>${currentWeek()?.status==='open'?'<button class="btn ghost" onclick="closeCurrentWeek()">Cerrar semana actual</button>':''}</div><div class="list">${rows}</div>`;
+}
+function showWeekSummary(id){const w=state.weeks.find(x=>x.id===id);if(!w)return;const bt=businessTotals(w),ot=ownTotals(w),st=salesTotals(w),prod=productionByProduct(w),pq=Object.values(prod).reduce((a,b)=>a+n(b),0);const orders=w.orders.map(o=>`<div class="money-line"><span>${esc(business(o.businessId)?.name||'Negocio')} · ${orderQtyTotal(o)} postres</span><strong>${money(orderMoney(o))}</strong></div>`).join('');modal(w.label,`${orders||'<div class="empty">Sin pedidos de negocios.</div>'}<div class="divider"></div><div class="money-line"><span>Producción propia</span><strong>${ot.qty}</strong></div><div class="money-line"><span>Ventas al público</span><strong>${money(st.money)}</strong></div><div class="money-line"><span>Producción total</span><strong>${pq}</strong></div><div class="total-box section"><div class="label">Facturación real</div><div class="big">${money(bt.money+st.money)}</div></div>`);}
+function openNewWeekModal(){modal('Nueva semana',`<div class="field"><label>Fecha de inicio</label><input id="newWeekDate" class="input" type="date" value="${todayISO()}" onchange="$('#newWeekLabel').value=weekLabel(this.value)"></div><div class="field"><label>Nombre</label><input id="newWeekLabel" class="input" value="${esc(weekLabel())}"></div><button class="btn primary wide" onclick="createWeek()">Crear semana</button>`);}
+function createWeek(){const date=$('#newWeekDate').value||todayISO(),label=$('#newWeekLabel').value.trim()||weekLabel(date);state.weeks.filter(w=>w.status==='open').forEach(w=>w.status='closed');const id=uid('week');state.weeks.push({id,label,startDate:date,status:'open',orders:[],ownProduction:{},publicSales:[],productionStatus:{}});state.currentWeekId=id;saveState(false);closeModal();currentView='dashboard';render();showToast('Nueva semana creada');}
+function closeCurrentWeek(){if(!confirm('¿Cerrar la semana actual? Quedará guardada en el historial.'))return;currentWeek().status='closed';saveState();showToast('Semana cerrada');}
+
+function renderSettings(){
+  return `${hero('Configuración','Precios generales y datos')}<div class="card"><div class="field"><label>Precio general negocios</label><input id="setBiz" class="input" type="number" value="${state.settings.businessPrice}"></div><div class="field"><label>Precio general público</label><input id="setPub" class="input" type="number" value="${state.settings.publicPrice}"></div><button class="btn primary wide" onclick="saveSettings()">Guardar precios</button></div>
+    <div class="section"><div class="section-title"><h3>Copia de seguridad</h3></div><div class="grid grid-2"><button class="btn ghost" onclick="exportBackup()">⬇️ Exportar datos</button><button class="btn ghost" onclick="$('#importFile').click()">⬆️ Importar datos</button></div><input id="importFile" type="file" accept="application/json" style="display:none" onchange="importBackup(this.files[0])"></div>
+    <div class="section"><div class="section-title"><h3>Instalar en iPhone</h3></div><div class="note">Abrí esta app desde Safari, tocá Compartir y elegí “Agregar a pantalla de inicio”. Después se abre como una app independiente.</div></div>
+    <div class="section"><button class="btn danger wide" onclick="resetApp()">Restablecer datos de ejemplo</button></div>`;
+}
+function saveSettings(){state.settings.businessPrice=n($('#setBiz').value);state.settings.publicPrice=n($('#setPub').value);saveState();showToast('Precios generales actualizados');}
+function exportBackup(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`toque-dulce-backup-${todayISO()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);showToast('Backup exportado');}
+function importBackup(file){if(!file)return;const r=new FileReader();r.onload=()=>{try{const data=JSON.parse(r.result);if(!data.products||!data.weeks)throw new Error();state=data;saveState(false);render();showToast('Backup importado');}catch(e){alert('El archivo no parece ser un backup válido de Toque Dulce.');}};r.readAsText(file);}
+function resetApp(){if(!confirm('¿Restablecer toda la app? Esto elimina los datos actuales del dispositivo.'))return;state=seedState();saveState();showToast('Datos restablecidos');}
+
+function renderMore(){
+  return `${hero('Más','Administración de la app')}<div class="action-grid">
+    ${action('🏪','Negocios','Agregar o editar clientes',"go('businesses')")}
+    ${action('🍰','Postres','Crear nuevas variedades',"go('products')")}
+    ${action('🥛','Materia prima','Precios e ingredientes',"go('ingredients')")}
+    ${action('🛒','Lista ingredientes','Necesario para producir',"go('shopping')")}
+    ${action('✅','Modo producción','Pendiente / haciendo / listo',"go('productionMode')")}
+    ${action('📚','Historial','Semanas anteriores',"go('history')")}
+    ${action('⚙️','Configuración','Precios y backups',"go('settings')")}
+  </div>`;
+}
+
+if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(console.warn)); }
+loadState();
+render();
+
+</script>
+</body>
+</html>

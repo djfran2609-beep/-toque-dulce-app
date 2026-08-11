@@ -1,0 +1,11 @@
+{
+  "name": "Toque Dulce",
+  "short_name": "Toque Dulce",
+  "description": "Pedidos, producción, ventas y recetas de Toque Dulce",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#fff8fb",
+  "theme_color": "#f05b92",
+  "orientation": "portrait-primary"
+}
