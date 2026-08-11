@@ -7,5 +7,11 @@
   "display": "standalone",
   "background_color": "#fff8fb",
   "theme_color": "#f05b92",
-  "orientation": "portrait-primary"
-}
+  "orientation": "portrait-primary",
+"icons": [
+  {
+    "src": "icono-512.png.PNG",
+    "sizes": "512x512",
+    "type": "image/png"
+  }
+]}
