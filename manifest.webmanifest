@@ -10,7 +10,7 @@
   "orientation": "portrait-primary",
 "icons": [
   {
-    "src": "icono-512.png.PNG",
+    "src": "icon-512.png.PNG",
     "sizes": "512x512",
     "type": "image/png"
   }
