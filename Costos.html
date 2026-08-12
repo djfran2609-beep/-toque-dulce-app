@@ -119,7 +119,7 @@ input:focus,select:focus{border-color:var(--rosa);box-shadow:0 0 0 3px rgba(231,
 
 <div class="campo">
 <label for="ingCantidad">Cantidad que trae</label>
-<input id="ingCantidad" required type="number" inputmode="decimal" min="0.0001" step="0.01" placeholder="10000">
+<input id="ingCantidad" required type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="10000">
 </div>
 
 <div class="campo todo">
@@ -418,7 +418,7 @@ ${escapar(ingrediente.nombre)} (${ingrediente.unidad})
 class="cant-ing"
 type="number"
 inputmode="decimal"
-min="0.0001"
+min="0.01"
 step="0.01"
 value="${escapar(cantidad)}"
 placeholder="Cantidad">
