@@ -1,0 +1,741 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#e74c87">
+<title>Calculadora de costos · Toque Dulce</title>
+<style>
+:root{--rosa:#e74c87;--rosa2:#ff8db7;--fondo:#fff7fa;--tarjeta:#fff;--texto:#2c2026;--suave:#7d6a73;--borde:#f0d9e2;--verde:#18864b;--rojo:#c93b4f;--sombra:0 10px 28px rgba(91,36,58,.10)}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(180deg,#ffe7f0 0,#fff7fa 220px);color:var(--texto);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.app{max-width:760px;margin:auto;min-height:100vh;padding:env(safe-area-inset-top) 14px calc(30px + env(safe-area-inset-bottom))}
+header{padding:24px 4px 16px}
+.marca{display:flex;align-items:center;gap:12px}
+.logo{width:52px;height:52px;border-radius:17px;background:linear-gradient(135deg,var(--rosa),var(--rosa2));display:grid;place-items:center;color:white;font-size:25px;box-shadow:var(--sombra)}
+h1{font-size:25px;margin:0;line-height:1.05}
+.sub{color:var(--suave);font-size:13px;margin-top:5px}
+.aislado{margin:12px 0 0;background:#fff;border:1px solid var(--borde);border-radius:12px;padding:10px 12px;font-size:12px;color:var(--suave)}
+.resumen{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:5px 0 14px}
+.mini{background:var(--tarjeta);border:1px solid var(--borde);border-radius:16px;padding:13px 10px;box-shadow:0 5px 16px rgba(91,36,58,.06)}
+.mini strong{font-size:19px;display:block}
+.mini span{font-size:11px;color:var(--suave)}
+nav{display:grid;grid-template-columns:1fr 1fr;gap:8px;position:sticky;top:0;z-index:5;padding:8px 0;background:rgba(255,247,250,.92);backdrop-filter:blur(12px)}
+.tab{border:1px solid var(--borde);background:#fff;color:var(--texto);border-radius:13px;padding:12px;font-weight:750}
+.tab.activo{background:var(--rosa);border-color:var(--rosa);color:#fff}
+.vista{display:none}
+.vista.activa{display:block}
+.card{background:var(--tarjeta);border:1px solid var(--borde);border-radius:19px;padding:16px;margin:12px 0;box-shadow:var(--sombra)}
+.card h2{font-size:18px;margin:0 0 4px}
+.ayuda{font-size:12px;color:var(--suave);margin:0 0 14px;line-height:1.4}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+.campo{margin:0 0 11px}
+.campo.todo{grid-column:1/-1}
+label{display:block;font-size:12px;font-weight:750;margin:0 0 6px;color:#5c4852}
+input,select{width:100%;border:1px solid var(--borde);border-radius:12px;background:#fff;padding:12px;color:var(--texto);outline:none}
+input:focus,select:focus{border-color:var(--rosa);box-shadow:0 0 0 3px rgba(231,76,135,.12)}
+.botones{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:0;border-radius:12px;padding:11px 14px;font-weight:780;background:#f4e8ed;color:#5f3e4c}
+.btn.principal{background:var(--rosa);color:#fff;flex:1}
+.btn.peligro{color:var(--rojo)}
+.btn.chico{padding:8px 10px;font-size:12px}
+.oculto{display:none!important}
+.lista-vacia{text-align:center;padding:28px 14px;color:var(--suave);font-size:13px}
+.item{border-top:1px solid var(--borde);padding:13px 0}
+.item:first-child{border-top:0}
+.fila{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.nombre{font-weight:800}
+.detalle{font-size:12px;color:var(--suave);margin-top:4px}
+.costo{font-weight:850;color:var(--rosa);white-space:nowrap}
+.acciones{display:flex;gap:6px;margin-top:9px}
+.receta-linea{display:grid;grid-template-columns:1fr 94px 38px;gap:7px;margin-bottom:8px;align-items:center}
+.quitar{border:0;border-radius:10px;height:42px;background:#fff0f2;color:var(--rojo);font-size:18px}
+.receta-card{border:1px solid var(--borde);border-radius:16px;padding:14px;margin-top:11px}
+.receta-top{display:flex;justify-content:space-between;gap:10px}
+.total{font-size:20px;font-weight:900;color:var(--rosa)}
+.desglose{margin:10px 0;border-top:1px dashed var(--borde);padding-top:8px}
+.desglose div,.ganancia div{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0}
+.ganancia{background:#f5fff9;border-radius:12px;padding:8px 10px;margin-top:8px;color:#235d3e}
+.negativa{background:#fff4f5;color:#9b293b}
+.barra-final{margin-top:16px;display:flex;gap:8px}
+.nota{font-size:11px;color:var(--suave);line-height:1.45}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:#2d2227;color:white;padding:11px 16px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;z-index:20;font-size:13px}
+.toast.ver{opacity:1;transform:translateX(-50%) translateY(0)}
+@media(max-width:480px){
+.grid{grid-template-columns:1fr}
+.campo.todo{grid-column:auto}
+.app{padding-left:11px;padding-right:11px}
+.receta-linea{grid-template-columns:1fr 82px 38px}
+.resumen{gap:6px}
+.mini{padding:11px 8px}
+.mini strong{font-size:17px}
+}
+</style>
+</head>
+<body>
+<main class="app">
+<header>
+<div class="marca">
+<div class="logo">$</div>
+<div>
+<h1>Calculadora de costos</h1>
+<div class="sub">Toque Dulce</div>
+</div>
+</div>
+<div class="aislado">Este sector guarda ingredientes y recetas por separado. No modifica pedidos, producción ni historial.</div>
+</header>
+
+<section class="resumen">
+<div class="mini"><strong id="nIngredientes">0</strong><span>Ingredientes</span></div>
+<div class="mini"><strong id="nRecetas">0</strong><span>Postres</span></div>
+<div class="mini"><strong id="promedio">$0</strong><span>Costo promedio</span></div>
+</section>
+
+<nav>
+<button class="tab activo" data-vista="ingredientes">Ingredientes</button>
+<button class="tab" data-vista="recetas">Postres y recetas</button>
+</nav>
+
+<section id="ingredientes" class="vista activa">
+<div class="card">
+<h2 id="tituloIngrediente">Agregar ingrediente</h2>
+<p class="ayuda">Poné cuánto pagaste y cuánto trae el paquete. La aplicación calcula el valor por gramo, mililitro o unidad.</p>
+
+<form id="formIngrediente">
+<input id="ingredienteId" type="hidden">
+
+<div class="grid">
+<div class="campo todo">
+<label for="ingNombre">Nombre</label>
+<input id="ingNombre" required placeholder="Ej.: Dulce de leche">
+</div>
+
+<div class="campo">
+<label for="ingPrecio">Precio pagado ($)</label>
+<input id="ingPrecio" required type="number" inputmode="decimal" min="0" step="0.01" placeholder="50500">
+</div>
+
+<div class="campo">
+<label for="ingCantidad">Cantidad que trae</label>
+<input id="ingCantidad" required type="number" inputmode="decimal" min="0.0001" step="0.01" placeholder="10000">
+</div>
+
+<div class="campo todo">
+<label for="ingUnidad">Unidad de medida</label>
+<select id="ingUnidad">
+<option value="g">Gramos (g)</option>
+<option value="ml">Mililitros (ml)</option>
+<option value="u">Unidades</option>
+</select>
+</div>
+</div>
+
+<div class="botones">
+<button class="btn principal" type="submit">Guardar ingrediente</button>
+<button id="cancelarIngrediente" class="btn oculto" type="button">Cancelar</button>
+</div>
+</form>
+</div>
+
+<div class="card">
+<h2>Mis ingredientes</h2>
+<div id="listaIngredientes"></div>
+</div>
+</section>
+
+<section id="recetas" class="vista">
+<div class="card">
+<h2 id="tituloReceta">Agregar postre</h2>
+<p class="ayuda">Elegí cada ingrediente y escribí cuánto usás en un solo vaso. Podés incluir vaso, etiqueta y cucharita como ingredientes por unidad.</p>
+
+<form id="formReceta">
+<input id="recetaId" type="hidden">
+
+<div class="campo">
+<label for="recNombre">Nombre del postre</label>
+<input id="recNombre" required placeholder="Ej.: Chocotorta">
+</div>
+
+<div class="grid">
+<div class="campo">
+<label for="precioNegocio">Precio a negocio ($)</label>
+<input id="precioNegocio" type="number" inputmode="decimal" min="0" step="0.01" placeholder="5000">
+</div>
+
+<div class="campo">
+<label for="precioPublico">Precio al público ($)</label>
+<input id="precioPublico" type="number" inputmode="decimal" min="0" step="0.01" placeholder="7000">
+</div>
+</div>
+
+<label>Ingredientes usados por postre</label>
+<div id="lineasReceta"></div>
+
+<button id="agregarLinea" class="btn chico" type="button">+ Agregar ingrediente</button>
+
+<div class="botones" style="margin-top:14px">
+<button class="btn principal" type="submit">Guardar postre</button>
+<button id="cancelarReceta" class="btn oculto" type="button">Cancelar</button>
+</div>
+</form>
+</div>
+
+<div class="card">
+<h2>Costos de mis postres</h2>
+<div id="listaRecetas"></div>
+</div>
+</section>
+
+<div class="barra-final">
+<button id="exportar" class="btn" type="button">Descargar copia</button>
+<button id="importarBtn" class="btn" type="button">Restaurar copia</button>
+<input id="importar" class="oculto" type="file" accept="application/json">
+</div>
+
+<p class="nota">Los cambios de precio actualizan automáticamente todas las recetas. La copia de seguridad contiene solamente los datos de esta calculadora.</p>
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script>
+(() => {
+'use strict';
+
+const CLAVE = 'toqueDulce_calculadoraCostos_v1';
+const $ = id => document.getElementById(id);
+
+const nuevoId = () =>
+crypto.randomUUID
+? crypto.randomUUID()
+: Date.now().toString(36) + Math.random().toString(36).slice(2);
+
+const numero = valor => Number(valor) || 0;
+
+const dinero = valor =>
+new Intl.NumberFormat('es-AR',{
+style:'currency',
+currency:'ARS',
+maximumFractionDigits:2
+}).format(numero(valor));
+
+const formato = valor =>
+new Intl.NumberFormat('es-AR',{
+maximumFractionDigits:4
+}).format(numero(valor));
+
+const escapar = texto =>
+String(texto ?? '').replace(/[&<>'"]/g, c => ({
+'&':'&amp;',
+'<':'&lt;',
+'>':'&gt;',
+"'":'&#39;',
+'"':'&quot;'
+}[c]));
+
+let datos = cargar();
+
+function cargar(){
+try{
+const guardado = JSON.parse(localStorage.getItem(CLAVE));
+
+if(
+guardado &&
+Array.isArray(guardado.ingredientes) &&
+Array.isArray(guardado.recetas)
+){
+return guardado;
+}
+}catch(e){}
+
+return {
+ingredientes:[],
+recetas:[]
+};
+}
+
+function guardar(){
+localStorage.setItem(CLAVE,JSON.stringify(datos));
+render();
+}
+
+function avisar(mensaje){
+const t = $('toast');
+t.textContent = mensaje;
+t.classList.add('ver');
+clearTimeout(avisar.timer);
+avisar.timer = setTimeout(() => t.classList.remove('ver'),1800);
+}
+
+function costoUnitario(ingrediente){
+return numero(ingrediente.precio) / numero(ingrediente.cantidad);
+}
+
+function costoReceta(receta){
+return receta.items.reduce((total,item) => {
+const ingrediente = datos.ingredientes.find(
+i => i.id === item.ingredienteId
+);
+
+return total + (
+ingrediente
+? costoUnitario(ingrediente) * numero(item.cantidad)
+: 0
+);
+},0);
+}
+
+function margen(precio,costo){
+return precio > 0
+? ((precio - costo) / precio) * 100
+: 0;
+}
+
+document.querySelectorAll('.tab').forEach(boton => {
+boton.addEventListener('click',() => {
+document.querySelectorAll('.tab').forEach(b => {
+b.classList.toggle('activo',b === boton);
+});
+
+document.querySelectorAll('.vista').forEach(vista => {
+vista.classList.toggle(
+'activa',
+vista.id === boton.dataset.vista
+);
+});
+});
+});
+
+$('formIngrediente').addEventListener('submit',evento => {
+evento.preventDefault();
+
+const ingrediente = {
+id:$('ingredienteId').value || nuevoId(),
+nombre:$('ingNombre').value.trim(),
+precio:numero($('ingPrecio').value),
+cantidad:numero($('ingCantidad').value),
+unidad:$('ingUnidad').value
+};
+
+if(
+!ingrediente.nombre ||
+ingrediente.precio < 0 ||
+ingrediente.cantidad <= 0
+){
+return avisar('Revisá los datos del ingrediente');
+}
+
+const posicion = datos.ingredientes.findIndex(
+i => i.id === ingrediente.id
+);
+
+if(posicion >= 0){
+datos.ingredientes[posicion] = ingrediente;
+}else{
+datos.ingredientes.push(ingrediente);
+}
+
+limpiarIngrediente();
+guardar();
+avisar('Ingrediente guardado');
+});
+
+$('cancelarIngrediente').addEventListener(
+'click',
+limpiarIngrediente
+);
+
+function limpiarIngrediente(){
+$('formIngrediente').reset();
+$('ingredienteId').value = '';
+$('tituloIngrediente').textContent = 'Agregar ingrediente';
+$('cancelarIngrediente').classList.add('oculto');
+}
+
+window.editarIngrediente = id => {
+const ingrediente = datos.ingredientes.find(i => i.id === id);
+if(!ingrediente) return;
+
+$('ingredienteId').value = ingrediente.id;
+$('ingNombre').value = ingrediente.nombre;
+$('ingPrecio').value = ingrediente.precio;
+$('ingCantidad').value = ingrediente.cantidad;
+$('ingUnidad').value = ingrediente.unidad;
+$('tituloIngrediente').textContent = 'Editar ingrediente';
+$('cancelarIngrediente').classList.remove('oculto');
+
+scrollTo({
+top:260,
+behavior:'smooth'
+});
+};
+
+window.borrarIngrediente = id => {
+const estaUsado = datos.recetas.some(receta =>
+receta.items.some(item => item.ingredienteId === id)
+);
+
+if(estaUsado){
+return alert(
+'Este ingrediente está usado en una receta. Quitalo primero de esa receta.'
+);
+}
+
+if(confirm('¿Eliminar este ingrediente?')){
+datos.ingredientes = datos.ingredientes.filter(
+ingrediente => ingrediente.id !== id
+);
+
+guardar();
+}
+};
+
+$('agregarLinea').addEventListener('click',() => {
+agregarLinea();
+});
+
+function agregarLinea(seleccion = '',cantidad = ''){
+if(!datos.ingredientes.length){
+return avisar('Primero agregá un ingrediente');
+}
+
+const div = document.createElement('div');
+div.className = 'receta-linea';
+
+div.innerHTML = `
+<select class="sel-ing" aria-label="Ingrediente">
+${datos.ingredientes.map(ingrediente => `
+<option
+value="${ingrediente.id}"
+${ingrediente.id === seleccion ? 'selected' : ''}>
+${escapar(ingrediente.nombre)} (${ingrediente.unidad})
+</option>
+`).join('')}
+</select>
+
+<input
+class="cant-ing"
+type="number"
+inputmode="decimal"
+min="0.0001"
+step="0.01"
+value="${escapar(cantidad)}"
+placeholder="Cantidad">
+
+<button
+class="quitar"
+type="button"
+aria-label="Quitar">×</button>
+`;
+
+div.querySelector('.quitar').addEventListener(
+'click',
+() => div.remove()
+);
+
+$('lineasReceta').appendChild(div);
+}
+
+$('formReceta').addEventListener('submit',evento => {
+evento.preventDefault();
+
+const items = [
+...document.querySelectorAll('.receta-linea')
+].map(fila => ({
+ingredienteId:fila.querySelector('.sel-ing').value,
+cantidad:numero(fila.querySelector('.cant-ing').value)
+})).filter(item =>
+item.ingredienteId && item.cantidad > 0
+);
+
+const receta = {
+id:$('recetaId').value || nuevoId(),
+nombre:$('recNombre').value.trim(),
+precioNegocio:numero($('precioNegocio').value),
+precioPublico:numero($('precioPublico').value),
+items
+};
+
+if(!receta.nombre){
+return avisar('Escribí el nombre del postre');
+}
+
+if(!items.length){
+return avisar('Agregá al menos un ingrediente');
+}
+
+const posicion = datos.recetas.findIndex(
+r => r.id === receta.id
+);
+
+if(posicion >= 0){
+datos.recetas[posicion] = receta;
+}else{
+datos.recetas.push(receta);
+}
+
+limpiarReceta();
+guardar();
+avisar('Postre guardado');
+});
+
+$('cancelarReceta').addEventListener(
+'click',
+limpiarReceta
+);
+
+function limpiarReceta(){
+$('formReceta').reset();
+$('recetaId').value = '';
+$('lineasReceta').innerHTML = '';
+$('tituloReceta').textContent = 'Agregar postre';
+$('cancelarReceta').classList.add('oculto');
+}
+
+window.editarReceta = id => {
+const receta = datos.recetas.find(r => r.id === id);
+if(!receta) return;
+
+$('recetaId').value = receta.id;
+$('recNombre').value = receta.nombre;
+$('precioNegocio').value = receta.precioNegocio || '';
+$('precioPublico').value = receta.precioPublico || '';
+$('lineasReceta').innerHTML = '';
+
+receta.items.forEach(item => {
+agregarLinea(item.ingredienteId,item.cantidad);
+});
+
+$('tituloReceta').textContent = 'Editar postre';
+$('cancelarReceta').classList.remove('oculto');
+
+document.querySelector('[data-vista="recetas"]').click();
+
+scrollTo({
+top:260,
+behavior:'smooth'
+});
+};
+
+window.borrarReceta = id => {
+if(confirm('¿Eliminar este postre y su receta?')){
+datos.recetas = datos.recetas.filter(
+receta => receta.id !== id
+);
+
+guardar();
+}
+};
+
+$('exportar').addEventListener('click',() => {
+const archivo = new Blob(
+[JSON.stringify(datos,null,2)],
+{type:'application/json'}
+);
+
+const enlace = document.createElement('a');
+enlace.href = URL.createObjectURL(archivo);
+enlace.download = 'copia-costos-toque-dulce.json';
+enlace.click();
+
+setTimeout(
+() => URL.revokeObjectURL(enlace.href),
+1000
+);
+});
+
+$('importarBtn').addEventListener(
+'click',
+() => $('importar').click()
+);
+
+$('importar').addEventListener('change',async evento => {
+const archivo = evento.target.files[0];
+if(!archivo) return;
+
+try{
+const copia = JSON.parse(await archivo.text());
+
+if(
+!Array.isArray(copia.ingredientes) ||
+!Array.isArray(copia.recetas)
+){
+throw Error();
+}
+
+if(confirm('¿Reemplazar los datos actuales por esta copia?')){
+datos = copia;
+guardar();
+avisar('Copia restaurada');
+}
+}catch(error){
+alert('El archivo no es una copia válida de la calculadora.');
+}
+
+evento.target.value = '';
+});
+
+function render(){
+$('nIngredientes').textContent = datos.ingredientes.length;
+$('nRecetas').textContent = datos.recetas.length;
+
+const costoPromedio = datos.recetas.length
+? datos.recetas.reduce(
+(total,receta) => total + costoReceta(receta),
+0
+) / datos.recetas.length
+: 0;
+
+$('promedio').textContent = dinero(costoPromedio);
+
+$('listaIngredientes').innerHTML =
+datos.ingredientes.length
+? datos.ingredientes
+.slice()
+.sort((a,b) => a.nombre.localeCompare(b.nombre))
+.map(ingrediente => `
+<div class="item">
+<div class="fila">
+<div>
+<div class="nombre">${escapar(ingrediente.nombre)}</div>
+<div class="detalle">
+${dinero(ingrediente.precio)}
+por
+${formato(ingrediente.cantidad)}
+${ingrediente.unidad}
+</div>
+</div>
+
+<div class="costo">
+${dinero(costoUnitario(ingrediente))}/${ingrediente.unidad}
+</div>
+</div>
+
+<div class="acciones">
+<button
+class="btn chico"
+onclick="editarIngrediente('${ingrediente.id}')">
+Editar
+</button>
+
+<button
+class="btn chico peligro"
+onclick="borrarIngrediente('${ingrediente.id}')">
+Eliminar
+</button>
+</div>
+</div>
+`).join('')
+: '<div class="lista-vacia">Todavía no cargaste ingredientes.</div>';
+
+$('listaRecetas').innerHTML =
+datos.recetas.length
+? datos.recetas
+.slice()
+.sort((a,b) => a.nombre.localeCompare(b.nombre))
+.map(receta => {
+const costo = costoReceta(receta);
+const precioNegocio = numero(receta.precioNegocio);
+const precioPublico = numero(receta.precioPublico);
+const negocioNegativo = precioNegocio > 0 && precioNegocio < costo;
+const publicoNegativo = precioPublico > 0 && precioPublico < costo;
+
+const desglose = receta.items.map(item => {
+const ingrediente = datos.ingredientes.find(
+i => i.id === item.ingredienteId
+);
+
+if(!ingrediente) return '';
+
+return `
+<div>
+<span>
+${escapar(ingrediente.nombre)}
+·
+${formato(item.cantidad)}
+${ingrediente.unidad}
+</span>
+
+<strong>
+${dinero(costoUnitario(ingrediente) * item.cantidad)}
+</strong>
+</div>
+`;
+}).join('');
+
+return `
+<div class="receta-card">
+<div class="receta-top">
+<div>
+<div class="nombre">${escapar(receta.nombre)}</div>
+<div class="detalle">Costo total por unidad</div>
+</div>
+
+<div class="total">${dinero(costo)}</div>
+</div>
+
+<div class="desglose">${desglose}</div>
+
+${precioNegocio > 0 ? `
+<div class="ganancia ${negocioNegativo ? 'negativa' : ''}">
+<div>
+<span>Venta a negocio</span>
+<strong>${dinero(precioNegocio)}</strong>
+</div>
+
+<div>
+<span>Ganancia</span>
+<strong>${dinero(precioNegocio - costo)}</strong>
+</div>
+
+<div>
+<span>Margen sobre venta</span>
+<strong>${formato(margen(precioNegocio,costo))}%</strong>
+</div>
+</div>
+` : ''}
+
+${precioPublico > 0 ? `
+<div class="ganancia ${publicoNegativo ? 'negativa' : ''}">
+<div>
+<span>Venta al público</span>
+<strong>${dinero(precioPublico)}</strong>
+</div>
+
+<div>
+<span>Ganancia</span>
+<strong>${dinero(precioPublico - costo)}</strong>
+</div>
+
+<div>
+<span>Margen sobre venta</span>
+<strong>${formato(margen(precioPublico,costo))}%</strong>
+</div>
+</div>
+` : ''}
+
+<div class="acciones">
+<button
+class="btn chico"
+onclick="editarReceta('${receta.id}')">
+Editar
+</button>
+
+<button
+class="btn chico peligro"
+onclick="borrarReceta('${receta.id}')">
+Eliminar
+</button>
+</div>
+</div>
+`;
+}).join('')
+: '<div class="lista-vacia">Todavía no cargaste recetas.</div>';
+}
+
+render();
+})();
+</script>
+</body>
+</html>
