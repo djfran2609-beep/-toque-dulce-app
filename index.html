@@ -10,7 +10,7 @@
   <meta name="description" content="Gestión de pedidos y producción para Toque Dulce" />
   <link rel="manifest" href="manifest.webmanifest" /> 
   <link rel="apple-touch-icon" href="icon-512.png.PNG">
-  <script src="firebase-sync-fix.js" defer></script>
+  <script src="firebase-sync-fix.js?v=2" defer></script>
       <style>
   
 :root {
@@ -590,12 +590,46 @@ function copyShoppingList(){const totals=ingredientsNeeded(), lines=['Lista de p
 
 function renderHistory(){
   const rows=state.weeks.slice().sort((a,b)=>b.startDate.localeCompare(a.startDate)).map(w=>{const bt=businessTotals(w),st=salesTotals(w),prod=productionByProduct(w),q=Object.values(prod).reduce((a,b)=>a+n(b),0);return `<div class="list-item clickable" onclick="showWeekSummary('${w.id}')"><div class="grow"><strong>${esc(w.label)}</strong><small>${w.status==='open'?'Activa':'Cerrada'} · ${q} producidos · ${money(bt.money+st.money)} facturación real</small></div><span class="badge ${w.status==='open'?'ok':'gray'}">${w.status==='open'?'ACTIVA':'CERRADA'}</span><span>›</span></div>`;}).join('');
-  return `${hero('Historial','Semanas y tandas anteriores')}<div class="toolbar"><button class="btn primary" onclick="openNewWeekModal()">＋ Nueva semana</button>${currentWeek()?.status==='open'?'<button class="btn ghost" onclick="closeCurrentWeek()">Cerrar semana actual</button>':''}</div><div class="list">${rows}</div>`;
+  return `${hero('Historial','Semanas y tandas anteriores')}<div class="toolbar"><button class="btn primary" onclick="openNewWeekModal()">＋ Nueva semana</button>${currentWeek()?.status==='open'?'<button class="btn ghost" onclick="closeCurrentWeek()">Finalizar semana</button>':''}</div><div class="list">${rows}</div>`;
 }
 function showWeekSummary(id){const w=state.weeks.find(x=>x.id===id);if(!w)return;const bt=businessTotals(w),ot=ownTotals(w),st=salesTotals(w),prod=productionByProduct(w),pq=Object.values(prod).reduce((a,b)=>a+n(b),0);const orders=w.orders.map(o=>`<div class="money-line"><span>${esc(business(o.businessId)?.name||'Negocio')} · ${orderQtyTotal(o)} postres</span><strong>${money(orderMoney(o))}</strong></div>`).join('');modal(w.label,`${orders||'<div class="empty">Sin pedidos de negocios.</div>'}<div class="divider"></div><div class="money-line"><span>Producción propia</span><strong>${ot.qty}</strong></div><div class="money-line"><span>Ventas al público</span><strong>${money(st.money)}</strong></div><div class="money-line"><span>Producción total</span><strong>${pq}</strong></div><div class="total-box section"><div class="label">Facturación real</div><div class="big">${money(bt.money+st.money)}</div></div>`);}
-function openNewWeekModal(){modal('Nueva semana',`<div class="field"><label>Fecha de inicio</label><input id="newWeekDate" class="input" type="date" value="${todayISO()}" onchange="$('#newWeekLabel').value=weekLabel(this.value)"></div><div class="field"><label>Nombre</label><input id="newWeekLabel" class="input" value="${esc(weekLabel())}"></div><button class="btn primary wide" onclick="createWeek()">Crear semana</button>`);}
-function createWeek(){const date=$('#newWeekDate').value||todayISO(),label=$('#newWeekLabel').value.trim()||weekLabel(date);state.weeks.filter(w=>w.status==='open').forEach(w=>w.status='closed');const id=uid('week');state.weeks.push({id,label,startDate:date,status:'open',orders:[],ownProduction:{},publicSales:[],productionStatus:{}});state.currentWeekId=id;saveState(false);closeModal();currentView='dashboard';render();showToast('Nueva semana creada');}
-function closeCurrentWeek(){if(!confirm('¿Cerrar la semana actual? Quedará guardada en el historial.'))return;currentWeek().status='closed';saveState();showToast('Semana cerrada');}
+function weekHasActivity(w){
+  if(!w)return false;
+  const pedidos=(w.orders||[]).some(o=>(o.items||[]).some(item=>n(item.qty)>0));
+  const produccion=Object.values(w.ownProduction||{}).some(item=>n(item?.qty)>0);
+  const publico=(w.publicSales||[]).some(item=>n(item.qty)>0);
+  return pedidos||produccion||publico;
+}
+function weekHasCostClose(id){
+  try{return Boolean(JSON.parse(localStorage.getItem('toqueDulce_calculadoraCostos_v1'))?.cierres?.[id]);}
+  catch(_){return false;}
+}
+function openWeekClose(id){window.location.href='Costos.html?v=8&cerrar='+encodeURIComponent(id);}
+function openNewWeekModal(){
+  const activa=currentWeek();
+  if(activa?.status==='open'&&weekHasActivity(activa)&&!weekHasCostClose(activa.id)){
+    modal('Primero finalizá la semana',`<div class="note">Antes de crear otra semana, indicá cuántos postres quedaron. Así se guardan las ventas al público y la ganancia correcta sin mezclar semanas.</div><button class="btn primary wide section" onclick="openWeekClose('${activa.id}')">Finalizar ${esc(activa.label)}</button>`);
+    return;
+  }
+  modal('Nueva semana',`<div class="field"><label>Fecha de inicio</label><input id="newWeekDate" class="input" type="date" value="${todayISO()}" onchange="$('#newWeekLabel').value=weekLabel(this.value)"></div><div class="field"><label>Nombre</label><input id="newWeekLabel" class="input" value="${esc(weekLabel())}"></div><button class="btn primary wide" onclick="createWeek()">Crear semana</button>`);
+}
+function createWeek(){
+  const activa=currentWeek();
+  if(activa?.status==='open'&&weekHasActivity(activa)&&!weekHasCostClose(activa.id)){closeModal();openWeekClose(activa.id);return;}
+  const date=$('#newWeekDate').value||todayISO(),label=$('#newWeekLabel').value.trim()||weekLabel(date);
+  state.weeks.filter(w=>w.status==='open').forEach(w=>w.status='closed');
+  const id=uid('week');
+  state.weeks.push({id,label,startDate:date,status:'open',orders:[],ownProduction:{},publicSales:[],productionStatus:{}});
+  state.currentWeekId=id;saveState(false);closeModal();currentView='dashboard';render();showToast('Nueva semana creada');
+}
+function closeCurrentWeek(){
+  const semana=currentWeek();if(!semana)return;
+  if(!weekHasActivity(semana)){
+    if(!confirm('Esta semana está vacía. ¿Querés cerrarla?'))return;
+    semana.status='closed';saveState();showToast('Semana vacía cerrada');return;
+  }
+  openWeekClose(semana.id);
+}
 
 function renderSettings(){
   return `${hero('Configuración','Precios generales y datos')}<div class="card"><div class="field"><label>Precio general negocios</label><input id="setBiz" class="input" type="number" value="${state.settings.businessPrice}"></div><div class="field"><label>Precio general público</label><input id="setPub" class="input" type="number" value="${state.settings.publicPrice}"></div><button class="btn primary wide" onclick="saveSettings()">Guardar precios</button></div>
@@ -615,7 +649,7 @@ function renderMore(){
     ${action('🥛','Materia prima','Precios e ingredientes',"go('ingredients')")}
     ${action('🛒','Lista ingredientes','Necesario para producir',"go('shopping')")}
     ${action('✅','Modo producción','Pendiente / haciendo / listo',"go('productionMode')")}
-    ${action('🧮','Calculadora de costos','Ingredientes, recetas y ganancias',"window.location.href='Costos.html?v=7'")}
+    ${action('🧮','Calculadora de costos','Ingredientes, recetas y ganancias',"window.location.href='Costos.html?v=8'")}
     ${action('⚙️','Configuración','Precios y backups',"go('settings')")}
   </div>`;
 }
