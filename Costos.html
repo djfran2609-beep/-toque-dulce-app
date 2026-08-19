@@ -32,7 +32,7 @@
 <main class="app">
   <header>
     <div class="marca"><div class="logo">$</div><div><h1>Calculadora de costos</h1><div class="sub">Toque Dulce</div></div></div>
-    <div class="aislado">Todo se sincroniza entre los dos celulares autorizados. Al finalizar una semana también queda cerrada en la app principal.</div>
+    <div class="aislado">Ingredientes y recetas se cargan una sola vez en la app principal y se usan automáticamente acá. Todo continúa sincronizado entre los celulares.</div>
   </header>
 
   <section class="resumen">
@@ -50,39 +50,21 @@
 
   <section id="ingredientes" class="vista activa">
     <div class="card">
-      <h2 id="tituloIngrediente">Agregar ingrediente</h2>
-      <p class="ayuda">Poné cuánto pagaste y cuánto trae el paquete. La aplicación calcula el valor por gramo, mililitro o unidad.</p>
-      <form id="formIngrediente">
-        <input id="ingredienteId" type="hidden">
-        <div class="grid">
-          <div class="campo todo"><label for="ingNombre">Nombre</label><input id="ingNombre" required placeholder="Ej.: Dulce de leche"></div>
-          <div class="campo"><label for="ingPrecio">Precio pagado ($)</label><input id="ingPrecio" required type="number" inputmode="decimal" min="0" step="0.01" placeholder="50500"></div>
-          <div class="campo"><label for="ingCantidad">Cantidad que trae</label><input id="ingCantidad" required type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="10000"></div>
-          <div class="campo todo"><label for="ingUnidad">Unidad de medida</label><select id="ingUnidad"><option value="g">Gramos (g)</option><option value="ml">Mililitros (ml)</option><option value="u">Unidades</option></select></div>
-        </div>
-        <div class="botones"><button class="btn principal" type="submit">Guardar ingrediente</button><button id="cancelarIngrediente" class="btn oculto" type="button">Cancelar</button></div>
-      </form>
+      <h2>Ingredientes unificados</h2>
+      <p class="ayuda">Se cargan una sola vez desde Materia prima. Los precios y cantidades que cambies ahí se usan automáticamente en recetas, producción y ganancias.</p>
+      <button class="btn principal" type="button" onclick="location.href='index.html?v=10&vista=ingredients'">Editar en Materia prima</button>
     </div>
+    <form id="formIngrediente" class="oculto"><input id="ingredienteId"><input id="ingNombre"><input id="ingPrecio"><input id="ingCantidad"><select id="ingUnidad"><option value="g">g</option><option value="ml">ml</option><option value="u">u</option></select><span id="tituloIngrediente"></span><button id="cancelarIngrediente" type="button"></button></form>
     <div class="card"><h2>Mis ingredientes</h2><div id="listaIngredientes"></div></div>
   </section>
 
   <section id="recetas" class="vista">
     <div class="card">
-      <h2 id="tituloReceta">Agregar postre</h2>
-      <p class="ayuda">Elegí cada ingrediente y escribí cuánto usás en un solo vaso. Podés incluir vaso, etiqueta y cucharita como ingredientes por unidad.</p>
-      <form id="formReceta">
-        <input id="recetaId" type="hidden">
-        <div class="campo"><label for="recNombre">Nombre del postre</label><input id="recNombre" required placeholder="Ej.: Chocotorta"></div>
-        <div class="grid">
-          <div class="campo"><label for="precioNegocio">Precio a negocio ($)</label><input id="precioNegocio" type="number" inputmode="decimal" min="0" step="0.01" placeholder="5000"></div>
-          <div class="campo"><label for="precioPublico">Precio al público ($)</label><input id="precioPublico" type="number" inputmode="decimal" min="0" step="0.01" placeholder="7000"></div>
-        </div>
-        <label>Ingredientes usados por postre</label>
-        <div id="lineasReceta"></div>
-        <button id="agregarLinea" class="btn chico" type="button">+ Agregar ingrediente</button>
-        <div class="botones" style="margin-top:14px"><button class="btn principal" type="submit">Guardar postre</button><button id="cancelarReceta" class="btn oculto" type="button">Cancelar</button></div>
-      </form>
+      <h2>Recetas unificadas</h2>
+      <p class="ayuda">Cada postre y su receta se cargan una sola vez desde Postres. Esta calculadora usa esas mismas cantidades para obtener el costo y la ganancia.</p>
+      <button class="btn principal" type="button" onclick="location.href='index.html?v=10&vista=products'">Editar en Postres</button>
     </div>
+    <form id="formReceta" class="oculto"><input id="recetaId"><input id="recNombre"><input id="precioNegocio"><input id="precioPublico"><div id="lineasReceta"></div><button id="agregarLinea" type="button"></button><span id="tituloReceta"></span><button id="cancelarReceta" type="button"></button></form>
     <div class="card"><h2>Costos de mis postres</h2><div id="listaRecetas"></div></div>
   </section>
 
@@ -155,7 +137,7 @@
     <button id="importarBtn" class="btn" type="button">Restaurar copia</button>
     <input id="importar" class="oculto" type="file" accept="application/json">
   </div>
-  <p class="nota">Los cambios de precio actualizan automáticamente las ganancias. La calculadora solo lee pedidos y producción de la app principal; nunca los modifica.</p>
+  <p class="nota">Los cambios de precio actualizan automáticamente las ganancias. Ingredientes y recetas son los mismos de la app principal; los pedidos y la producción no se modifican desde acá.</p>
 </main>
 <div id="toast" class="toast"></div>
 
@@ -202,9 +184,18 @@
   }
   window.toqueDulceCostosSync={
     getState:()=>JSON.parse(JSON.stringify(datos)),
+    getGestionState:()=>gestion?JSON.parse(JSON.stringify(gestion)):null,
+    applyGestionState:nuevo=>{
+      if(!nuevo||!Array.isArray(nuevo.ingredients)||!Array.isArray(nuevo.products))return;
+      gestion=JSON.parse(JSON.stringify(nuevo));
+      localStorage.setItem(CLAVE_GESTION,JSON.stringify(gestion));
+      unificarCatalogo();
+      render();
+    },
     applyState:nuevo=>{
       datos=normalizar(JSON.parse(JSON.stringify(nuevo||{})));
       gestion=cargarGestion();
+      unificarCatalogo();
       localStorage.setItem(CLAVE,JSON.stringify(datos));
       render();
     }
@@ -217,6 +208,101 @@
   function productoGestion(id){return gestion?.products?.find(p=>p.id===id);}
   function precioGestion(p,canal){if(!p)return 0;return numero(canal==='business'?(p.businessPrice??gestion?.settings?.businessPrice):(p.publicPrice??gestion?.settings?.publicPrice));}
   function semanasGestion(){return (gestion?.weeks||[]).slice().sort((a,b)=>String(a.startDate||'').localeCompare(String(b.startDate||'')));}
+
+  function claveIngredienteUnificado(texto){
+  const clave=claveNombre(texto);
+  return clave==='crema de leche'||clave==='crema leche'?'crema':clave;
+}
+  function unidadGestionDesdeCostos(unidad){
+  return unidad==='u'?'unit':unidad;
+}
+  function ingredienteCostosDesdeGestion(item){
+  const unidad=item.unit==='kg'?'g':item.unit==='l'?'ml':item.unit==='unit'?'u':item.unit;
+  const cantidad=(item.unit==='kg'||item.unit==='l')?numero(item.purchaseQty)*1000:numero(item.purchaseQty);
+  return {id:item.id,nombre:item.name||'Ingrediente',precio:numero(item.purchasePrice),cantidad,unidad:unidad||'u'};
+}
+  function normalizarItemsGestion(items,remap){
+  const agrupados=new Map();
+  (items||[]).forEach(item=>{
+    const original=item.ingredientId??item.ingredienteId;
+    const ingredientId=remap.get(original)||original;
+    const qty=numero(item.qty??item.cantidad);
+    if(ingredientId&&qty>0)agrupados.set(ingredientId,(agrupados.get(ingredientId)||0)+qty);
+  });
+  return [...agrupados].map(([ingredientId,qty])=>({ingredientId,qty}));
+}
+  function unificarCatalogo(){
+  if(!gestion||!Array.isArray(gestion.ingredients)||!Array.isArray(gestion.products))return false;
+  const primeraVez=!datos.catalogoUnificadoV1,remap=new Map(),porNombre=new Map(),canonicos=[];
+  gestion.ingredients.forEach(item=>{
+    const clave=claveIngredienteUnificado(item.name);
+    const existente=porNombre.get(clave);
+    if(!clave||!existente){
+      canonicos.push(item);
+      if(clave)porNombre.set(clave,item);
+      return;
+    }
+    remap.set(item.id,existente.id);
+    if(numero(item.purchasePrice)>0)existente.purchasePrice=numero(item.purchasePrice);
+    if(numero(item.purchaseQty)>0){existente.purchaseQty=numero(item.purchaseQty);existente.unit=item.unit||existente.unit;}
+    if(item.note)existente.note=item.note;
+    existente.active=existente.active!==false||item.active!==false;
+  });
+
+  datos.ingredientes.forEach(item=>{
+    const clave=claveIngredienteUnificado(item.nombre),existente=porNombre.get(clave);
+    if(existente){
+      remap.set(item.id,existente.id);
+      if(primeraVez&&numero(item.cantidad)>0){
+        existente.name=existente.name||item.nombre;
+        existente.purchasePrice=numero(item.precio);
+        existente.purchaseQty=numero(item.cantidad);
+        existente.unit=unidadGestionDesdeCostos(item.unidad);
+        existente.active=true;
+      }
+      return;
+    }
+    const id=item.id&&!canonicos.some(i=>i.id===item.id)?item.id:nuevoId();
+    const nuevo={id,name:item.nombre,purchasePrice:numero(item.precio),purchaseQty:numero(item.cantidad),unit:unidadGestionDesdeCostos(item.unidad),active:true,note:''};
+    canonicos.push(nuevo);porNombre.set(clave,nuevo);remap.set(item.id,id);
+  });
+
+  gestion.ingredients=canonicos.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'es',{sensitivity:'base'}));
+  gestion.products.forEach(producto=>{producto.recipe=normalizarItemsGestion(producto.recipe,remap);});
+
+  if(primeraVez){
+    datos.recetas.forEach(receta=>{
+      const clave=claveNombre(receta.nombre);
+      let producto=gestion.products.find(item=>claveNombre(item.name)===clave);
+      const items=normalizarItemsGestion(receta.items,remap);
+      if(!producto){
+        producto={id:receta.id&&!gestion.products.some(p=>p.id===receta.id)?receta.id:nuevoId(),name:receta.nombre,active:true,businessPrice:null,publicPrice:null,notes:'Migrado desde la calculadora de costos.',recipe:items};
+        gestion.products.push(producto);
+      }else if(items.length){
+        producto.recipe=items;
+      }
+      const precioNegocio=numero(receta.precioNegocio),precioPublico=numero(receta.precioPublico);
+      if(precioNegocio>0&&precioNegocio!==numero(gestion.settings?.businessPrice))producto.businessPrice=precioNegocio;
+      if(precioPublico>0&&precioPublico!==numero(gestion.settings?.publicPrice))producto.publicPrice=precioPublico;
+    });
+  }
+
+  gestion.products.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||''),'es',{sensitivity:'base'}));
+  datos.ingredientes=gestion.ingredients.map(ingredienteCostosDesdeGestion).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es',{sensitivity:'base'}));
+  datos.recetas=gestion.products.filter(p=>Array.isArray(p.recipe)&&p.recipe.length).map(p=>({
+    id:p.id,
+    nombre:p.name,
+    precioNegocio:numero(p.businessPrice??gestion.settings?.businessPrice),
+    precioPublico:numero(p.publicPrice??gestion.settings?.publicPrice),
+    items:p.recipe.map(item=>({ingredienteId:item.ingredientId,cantidad:numero(item.qty)}))
+  })).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es',{sensitivity:'base'}));
+  datos.catalogoUnificadoV1=true;
+  localStorage.setItem(CLAVE_GESTION,JSON.stringify(gestion));
+  localStorage.setItem(CLAVE,JSON.stringify(datos));
+  return true;
+}
+
+  unificarCatalogo();
 
   document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>{
     document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('activo',b===btn));
@@ -240,7 +326,7 @@
   function agregarLinea(seleccion='',cantidad=''){
     if(!datos.ingredientes.length)return avisar('Primero agregá un ingrediente');
     const div=document.createElement('div');div.className='receta-linea';
-    div.innerHTML=`<select class="sel-ing" aria-label="Ingrediente">${datos.ingredientes.map(i=>`<option value="${i.id}" ${i.id===seleccion?'selected':''}>${escapar(i.nombre)} (${i.unidad})</option>`).join('')}</select><input class="cant-ing" type="number" inputmode="decimal" min="0.01" step="0.01" value="${escapar(cantidad)}" placeholder="Cantidad"><button class="quitar" type="button" aria-label="Quitar">×</button>`;
+    div.innerHTML=`<select class="sel-ing" aria-label="Ingrediente">${datos.ingredientes.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre,'es',{sensitivity:'base'})).map(i=>`<option value="${i.id}" ${i.id===seleccion?'selected':''}>${escapar(i.nombre)} (${i.unidad})</option>`).join('')}</select><input class="cant-ing" type="number" inputmode="decimal" min="0.01" step="0.01" value="${escapar(cantidad)}" placeholder="Cantidad"><button class="quitar" type="button" aria-label="Quitar">×</button>`;
     div.querySelector('.quitar').addEventListener('click',()=>div.remove());$('lineasReceta').appendChild(div);
   }
   $('formReceta').addEventListener('submit',e=>{
@@ -483,11 +569,11 @@
   function render(){
     $('nIngredientes').textContent=datos.ingredientes.length;$('nRecetas').textContent=datos.recetas.length;
     const prom=datos.recetas.length?datos.recetas.reduce((s,r)=>s+costoReceta(r),0)/datos.recetas.length:0;$('promedio').textContent=dinero(prom);
-    $('listaIngredientes').innerHTML=datos.ingredientes.length?datos.ingredientes.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(i=>`<div class="item"><div class="fila"><div><div class="nombre">${escapar(i.nombre)}</div><div class="detalle">${dinero(i.precio)} por ${formato(i.cantidad)} ${i.unidad}</div></div><div class="costo">${dinero(costoUnitario(i))}/${i.unidad}</div></div><div class="acciones"><button class="btn chico" onclick="editarIngrediente('${i.id}')">Editar</button><button class="btn chico peligro" onclick="borrarIngrediente('${i.id}')">Eliminar</button></div></div>`).join(''):'<div class="lista-vacia">Todavía no cargaste ingredientes.</div>';
+    $('listaIngredientes').innerHTML=datos.ingredientes.length?datos.ingredientes.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(i=>`<div class="item"><div class="fila"><div><div class="nombre">${escapar(i.nombre)}</div><div class="detalle">${dinero(i.precio)} por ${formato(i.cantidad)} ${i.unidad}</div></div><div class="costo">${dinero(costoUnitario(i))}/${i.unidad}</div></div></div>`).join(''):'<div class="lista-vacia">Todavía no cargaste ingredientes.</div>';
     $('listaRecetas').innerHTML=datos.recetas.length?datos.recetas.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(r=>{
       const costo=costoReceta(r),pn=numero(r.precioNegocio),pp=numero(r.precioPublico),negN=pn>0&&pn<costo,pubN=pp>0&&pp<costo;
       const desglose=r.items.map(item=>{const i=datos.ingredientes.find(x=>x.id===item.ingredienteId);return i?`<div><span>${escapar(i.nombre)} · ${formato(item.cantidad)} ${i.unidad}</span><strong>${dinero(costoUnitario(i)*item.cantidad)}</strong></div>`:'';}).join('');
-      return `<div class="receta-card"><div class="receta-top"><div><div class="nombre">${escapar(r.nombre)}</div><div class="detalle">Costo total por unidad</div></div><div class="total">${dinero(costo)}</div></div><div class="desglose">${desglose}</div>${pn>0?`<div class="ganancia ${negN?'negativa':''}"><div><span>Venta a negocio</span><strong>${dinero(pn)}</strong></div><div><span>Ganancia</span><strong>${dinero(pn-costo)}</strong></div><div><span>Margen sobre venta</span><strong>${formato(margen(pn,costo))}%</strong></div></div>`:''}${pp>0?`<div class="ganancia ${pubN?'negativa':''}"><div><span>Venta al público</span><strong>${dinero(pp)}</strong></div><div><span>Ganancia</span><strong>${dinero(pp-costo)}</strong></div><div><span>Margen sobre venta</span><strong>${formato(margen(pp,costo))}%</strong></div></div>`:''}<div class="acciones"><button class="btn chico" onclick="editarReceta('${r.id}')">Editar</button><button class="btn chico peligro" onclick="borrarReceta('${r.id}')">Eliminar</button></div></div>`;
+      return `<div class="receta-card"><div class="receta-top"><div><div class="nombre">${escapar(r.nombre)}</div><div class="detalle">Costo total por unidad</div></div><div class="total">${dinero(costo)}</div></div><div class="desglose">${desglose}</div>${pn>0?`<div class="ganancia ${negN?'negativa':''}"><div><span>Venta a negocio</span><strong>${dinero(pn)}</strong></div><div><span>Ganancia</span><strong>${dinero(pn-costo)}</strong></div><div><span>Margen sobre venta</span><strong>${formato(margen(pn,costo))}%</strong></div></div>`:''}${pp>0?`<div class="ganancia ${pubN?'negativa':''}"><div><span>Venta al público</span><strong>${dinero(pp)}</strong></div><div><span>Ganancia</span><strong>${dinero(pp-costo)}</strong></div><div><span>Margen sobre venta</span><strong>${formato(margen(pp,costo))}%</strong></div></div>`:''}<div class="acciones"><button class="btn chico" onclick="location.href='index.html?v=10&vista=products'">Editar en Postres</button></div></div>`;
     }).join(''):'<div class="lista-vacia">Todavía no cargaste recetas.</div>';
     renderGanancias();
     renderTops();
@@ -503,6 +589,6 @@
   if(cierreSolicitado)setTimeout(()=>document.getElementById('cierreSemanal')?.scrollIntoView({behavior:'smooth',block:'start'}),120);
 })();
 </script>
-<script src="firebase-costos-sync.js?v=1" defer></script>
+<script src="firebase-costos-sync.js?v=2" defer></script>
 </body>
 </html>
