@@ -8,8 +8,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Toque Dulce" />
   <meta name="description" content="Gestión de pedidos y producción para Toque Dulce" />
-  <link rel="manifest" href="manifest.webmanifest" /> 
-  <link rel="apple-touch-icon" href="icon-512.png.PNG">
+  <link rel="manifest" href="manifest.webmanifest?v=2" /> 
+  <link rel="apple-touch-icon" href="icon-512.png.PNG?v=2">
   <script src="firebase-sync-fix.js?v=2" defer></script>
       <style>
   
@@ -38,6 +38,20 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+.splash-screen {
+  position:fixed; inset:0; z-index:999; display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:16px;
+  padding:env(safe-area-inset-top) 20px env(safe-area-inset-bottom);
+  background:linear-gradient(180deg,#fff4f8 0%,#fffafb 100%);
+  opacity:1; visibility:visible; transition:opacity .28s ease, visibility .28s ease;
+}
+.splash-screen.hide { opacity:0; visibility:hidden; pointer-events:none; }
+.splash-logo {
+  width:132px; height:132px; border-radius:34px; object-fit:cover;
+  background:#fff; border:1px solid var(--line); box-shadow:0 18px 45px rgba(83,39,58,.14);
+}
+.splash-title { font-size:25px; font-weight:900; letter-spacing:-.5px; }
+.splash-subtitle { margin-top:-9px; color:var(--muted); font-size:13px; }
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
 button:disabled { opacity: .5; cursor: default; }
@@ -187,6 +201,11 @@ button:disabled { opacity: .5; cursor: default; }
   <title>Toque Dulce</title>
 </head>
 <body>
+  <div id="splash" class="splash-screen" aria-label="Abriendo Toque Dulce">
+    <img class="splash-logo" src="icon-512.png.PNG?v=2" alt="Logo Toque Dulce">
+    <div class="splash-title">Toque Dulce</div>
+    <div class="splash-subtitle">Organizando tu producción</div>
+  </div>
   <div id="app"></div>
   <div id="toast" class="toast" aria-live="polite"></div>
   <script>
@@ -391,7 +410,7 @@ function render(){
   document.getElementById('app').innerHTML=`
     <div class="app-shell">
       <header class="topbar"><div class="topbar-row">
-        <div class="brand-mark"><img src="icon-512.png.PNG" alt="Logo Toque Dulce"></div>
+        <div class="brand-mark"><img src="icon-512.png.PNG?v=2" alt="Logo Toque Dulce"></div>
         <div class="top-title"><h1>Toque Dulce</h1><p>${esc(w?.label||'Sin semana activa')}</p></div>
         <button class="icon-btn" onclick="go('settings')">⚙️</button>
       </div></header>
@@ -698,6 +717,12 @@ loadState();
 const vistaInicial=new URLSearchParams(location.search).get('vista');
 if(['dashboard','ingredients','products','history','more'].includes(vistaInicial))currentView=vistaInicial;
 render();
+setTimeout(()=>{
+  const splash=document.getElementById('splash');
+  if(!splash)return;
+  splash.classList.add('hide');
+  setTimeout(()=>splash.remove(),320);
+},650);
 
 </script>
 </body>
