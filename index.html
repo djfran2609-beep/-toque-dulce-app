@@ -92,6 +92,7 @@ button:disabled { opacity: .5; cursor: default; }
 .action-card.profit { background:linear-gradient(145deg,#fff0f6,#ffe2ed); border-color:#f5bfd3; }
 .action-card.profit .ico { filter:drop-shadow(0 4px 8px rgba(240,91,146,.18)); }
 .action-card.profit strong { color:#a72f5d; }
+.action-card.full { grid-column:1/-1; min-height:78px; }
 .btn { border:0; border-radius:14px; padding:12px 14px; font-weight:800; color:var(--ink); background:#f5edf1; }
 .btn.primary { color:white; background:linear-gradient(135deg,var(--brand),var(--brand-2)); }
 .btn.ghost { background:#fff; border:1px solid var(--line); }
@@ -201,6 +202,7 @@ const int = v => Math.max(0, Math.floor(Number(v || 0)));
 const money = v => new Intl.NumberFormat('es-AR', {style:'currency', currency:'ARS', maximumFractionDigits:0}).format(n(v));
 const qtyFmt = v => new Intl.NumberFormat('es-AR', {maximumFractionDigits:2}).format(n(v));
 const esc = (s='') => String(s).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
+const nameKey = (s='') => { const key=String(s).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); return key==='crema de leche'||key==='crema leche'?'crema':key; };
 
 function todayISO(){ return new Date().toISOString().slice(0,10); }
 function weekLabel(dateStr=todayISO()) {
@@ -216,6 +218,30 @@ function smartQty(qty, unit){
   if(unit==='ml' && qty>=1000) return `${qtyFmt(qty/1000)} l`;
   if(unit==='u') return `${qtyFmt(qty)} u`;
   return `${qtyFmt(qty)} ${unit}`;
+}
+function dedupeStateIngredients(){
+  if(!state?.ingredients||!state?.products)return;
+  const byName=new Map(),remap=new Map(),ordered=[];
+  state.ingredients.forEach(item=>{
+    const key=nameKey(item.name);
+    if(!key){ordered.push(item);return;}
+    const existing=byName.get(key);
+    if(!existing){byName.set(key,item);ordered.push(item);return;}
+    remap.set(item.id,existing.id);
+    if(n(item.purchasePrice)>0)existing.purchasePrice=n(item.purchasePrice);
+    if(n(item.purchaseQty)>0){existing.purchaseQty=n(item.purchaseQty);existing.unit=item.unit||existing.unit;}
+    if(item.note)existing.note=item.note;
+    existing.active=existing.active!==false||item.active!==false;
+  });
+  state.products.forEach(product=>{
+    const grouped=new Map();
+    (product.recipe||[]).forEach(row=>{
+      const ingredientId=remap.get(row.ingredientId)||row.ingredientId,qty=n(row.qty);
+      if(ingredientId&&qty>0)grouped.set(ingredientId,(grouped.get(ingredientId)||0)+qty);
+    });
+    product.recipe=[...grouped].map(([ingredientId,qty])=>({ingredientId,qty}));
+  });
+  state.ingredients=ordered.sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
 }
 
 function seedState(){
@@ -285,6 +311,7 @@ function loadState(){
     console.warn(e);
     state = seedState();
   }
+  dedupeStateIngredients();
   saveState(false);
 }
 function saveState(render=true){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); if(render) render(); }
@@ -410,7 +437,7 @@ function renderDashboard(){
     </div>
     <div class="section"><div class="section-title"><h3>Accesos rápidos</h3></div><div class="action-grid">
       ${action('🗓️','Nueva semana','Cerrar y empezar otra',"openNewWeekModal()")}
-      ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=9&vista=ganancias'",'profit')}
+      ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=10&vista=ganancias'",'profit')}
       ${action('🧾','Nuevo pedido','Cargar un negocio',"openOrderModal()")}
       ${action('🍓','Producción propia','Lo que venden ustedes',"go('own')")}
       ${action('📋','Lista de producción','Suma negocios + público',"go('production')")}
@@ -549,7 +576,7 @@ function deactivateBusiness(id){business(id).active=false;saveState(false);close
 function renderProducts(){
   const rows=state.products.filter(p=>p.active).sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<div class="list-item clickable" onclick="openProductModal('${p.id}')"><div class="grow"><strong>${esc(p.name)}</strong><small>Negocio ${money(priceOf(p,'business'))} · Público ${money(priceOf(p,'public'))} · ${(p.recipe||[]).length} ítems en receta</small></div><span>›</span></div>`).join('');
   const inactive=state.products.filter(p=>!p.active).length;
-  return `${hero('Postres','Precios, recetas y nuevas variedades')}<div class="note">Podés crear postres nuevos desde acá. No hace falta tocar el código.</div><div class="section list">${rows}</div>${inactive?`<div class="section"><button class="btn ghost wide" onclick="showInactiveProducts()">Ver ${inactive} desactivados</button></div>`:''}<button class="fab" onclick="openProductModal()">＋ Nuevo postre</button>`;
+  return `${hero('Postres y recetas','Precios, cantidades y nuevas variedades')}<div class="note">Cargá cada receta una sola vez: también se usa automáticamente para costos y ganancias.</div><div class="section list">${rows}</div>${inactive?`<div class="section"><button class="btn ghost wide" onclick="showInactiveProducts()">Ver ${inactive} desactivados</button></div>`:''}<button class="fab" onclick="openProductModal()">＋ Nuevo postre</button>`;
 }
 function showInactiveProducts(){const rows=state.products.filter(p=>!p.active).map(p=>`<div class="list-item"><div class="grow"><strong>${esc(p.name)}</strong><small>Desactivado</small></div><button class="btn small" onclick="reactivateProduct('${p.id}')">Reactivar</button></div>`).join('');modal('Postres desactivados',`<div class="list">${rows}</div>`);}
 function reactivateProduct(id){product(id).active=true;saveState(false);closeModal();render();showToast('Postre reactivado');}
@@ -571,19 +598,20 @@ function saveProduct(id=''){
   const biz=$('#pBizPrice').value.trim(), pub=$('#pPubPrice').value.trim();
   const data={name,businessPrice:biz===''?null:n(biz),publicPrice:pub===''?null:n(pub),notes:$('#pNotes').value.trim(),active:$('#pActive').checked,recipe};
   if(id)Object.assign(product(id),data); else state.products.push({id:uid('prod'),...data});
+  state.products.sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
   saveState(false);closeModal();render();showToast('Postre guardado');
 }
 function deactivateProduct(id){product(id).active=false;saveState(false);closeModal();render();showToast('Postre desactivado');}
 
 function renderIngredients(){
   const rows=state.ingredients.filter(i=>i.active).sort((a,b)=>a.name.localeCompare(b.name)).map(i=>`<div class="list-item clickable" onclick="openIngredientModal('${i.id}')"><div class="grow"><strong>${esc(i.name)}</strong><small>${money(i.purchasePrice)} / ${qtyFmt(i.purchaseQty)} ${i.unit==='unit'?'unidad(es)':i.unit} · ${money(ingredientCostPerBase(i))} por ${baseUnit(i.unit)}</small>${i.note?`<small>⚠️ ${esc(i.note)}</small>`:''}</div><span>›</span></div>`).join('');
-  return `${hero('Materia prima','Actualizá un precio una sola vez')}<div class="list">${rows}</div><button class="fab" onclick="openIngredientModal()">＋ Ingrediente</button>`;
+  return `${hero('Ingredientes','Un solo lugar para precios, envases y unidades')}<div class="list">${rows}</div><button class="fab" onclick="openIngredientModal()">＋ Ingrediente</button>`;
 }
 function openIngredientModal(id=''){
   const i=id?ingredient(id):{active:true,unit:'g'};
   modal(id?'Editar ingrediente':'Nuevo ingrediente',`<div class="field"><label>Nombre *</label><input id="iName" class="input" value="${esc(i.name||'')}"></div><div class="form-row"><div class="field"><label>Precio pagado</label><input id="iPrice" class="input" type="number" min="0" value="${i.purchasePrice??''}"></div><div class="field"><label>Cantidad comprada</label><input id="iQty" class="input" type="number" min="0" step="0.01" value="${i.purchaseQty??''}"></div></div><div class="field"><label>Unidad de compra</label><select id="iUnit" class="select"><option value="g" ${i.unit==='g'?'selected':''}>gramos</option><option value="kg" ${i.unit==='kg'?'selected':''}>kilogramos</option><option value="ml" ${i.unit==='ml'?'selected':''}>mililitros</option><option value="l" ${i.unit==='l'?'selected':''}>litros</option><option value="unit" ${i.unit==='unit'?'selected':''}>unidades</option></select></div><div class="field"><label>Nota</label><textarea id="iNote" class="textarea">${esc(i.note||'')}</textarea></div><div class="field"><label><input id="iActive" type="checkbox" ${i.active!==false?'checked':''}> Activo</label></div><div class="grid grid-2"><button class="btn primary" onclick="saveIngredient('${id}')">Guardar</button>${id?`<button class="btn ghost" onclick="deactivateIngredient('${id}')">Desactivar</button>`:'<button class="btn ghost" onclick="closeModal()">Cancelar</button>'}</div>`);
 }
-function saveIngredient(id=''){const name=$('#iName').value.trim();if(!name)return showToast('Escribí el nombre');const data={name,purchasePrice:n($('#iPrice').value),purchaseQty:n($('#iQty').value),unit:$('#iUnit').value,note:$('#iNote').value.trim(),active:$('#iActive').checked};if(id)Object.assign(ingredient(id),data);else state.ingredients.push({id:uid('ing'),...data});saveState(false);closeModal();render();showToast('Ingrediente guardado');}
+function saveIngredient(id=''){const name=$('#iName').value.trim();if(!name)return showToast('Escribí el nombre');const duplicate=state.ingredients.find(item=>item.id!==id&&nameKey(item.name)===nameKey(name));if(duplicate)return showToast('Ese ingrediente ya existe. Editalo en la lista.');const data={name,purchasePrice:n($('#iPrice').value),purchaseQty:n($('#iQty').value),unit:$('#iUnit').value,note:$('#iNote').value.trim(),active:$('#iActive').checked};if(id)Object.assign(ingredient(id),data);else state.ingredients.push({id:uid('ing'),...data});state.ingredients.sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'}));saveState(false);closeModal();render();showToast('Ingrediente guardado');}
 function deactivateIngredient(id){ingredient(id).active=false;saveState(false);closeModal();render();showToast('Ingrediente desactivado');}
 
 function renderShopping(){
@@ -613,7 +641,7 @@ function weekShouldClose(w){
   const inicio=new Date(`${w.startDate}T12:00:00`),hoy=new Date();
   return Number.isFinite(inicio.getTime())&&Math.floor((hoy-inicio)/86400000)>=6;
 }
-function openWeekClose(id){window.location.href='Costos.html?v=9&cerrar='+encodeURIComponent(id);}
+function openWeekClose(id){window.location.href='Costos.html?v=10&cerrar='+encodeURIComponent(id);}
 function openNewWeekModal(){
   const activa=currentWeek();
   if(activa?.status==='open'&&weekHasActivity(activa)&&!weekHasCostClose(activa.id)){
@@ -654,19 +682,20 @@ function resetApp(){if(!confirm('¿Restablecer toda la app? Esto elimina los dat
 function renderMore(){
   const w=currentWeek(),avisoCierre=weekShouldClose(w)?`<div class="note" style="margin-bottom:12px"><strong>Semana pendiente de finalizar</strong><br>Completá el cierre para guardar la ganancia correcta.<button class="btn primary wide" style="margin-top:10px" onclick="openWeekClose('${w.id}')">Finalizar semana</button></div>`:'';
   return `${hero('Más','Administración de la app')}${avisoCierre}<div class="action-grid">
-    ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=9&vista=ganancias'",'profit')}
+    ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=10&vista=ganancias'",'profit')}
     ${action('🏪','Negocios','Agregar o editar clientes',"go('businesses')")}
-    ${action('🍰','Postres','Crear nuevas variedades',"go('products')")}
-    ${action('🥛','Materia prima','Precios e ingredientes',"go('ingredients')")}
+    ${action('🍰','Postres y recetas','Variedades y cantidades',"go('products')")}
+    ${action('🥛','Ingredientes','Precio, envase y unidad',"go('ingredients')")}
     ${action('🛒','Lista ingredientes','Necesario para producir',"go('shopping')")}
     ${action('✅','Modo producción','Pendiente / haciendo / listo',"go('productionMode')")}
-    ${action('🧮','Costos y recetas','Ingredientes y precios',"window.location.href='Costos.html?v=9'")}
-    ${action('⚙️','Configuración','Precios y backups',"go('settings')")}
+    ${action('⚙️','Configuración','Precios y backups',"go('settings')",'full')}
   </div>`;
 }
 
 if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(console.warn)); }
 loadState();
+const vistaInicial=new URLSearchParams(location.search).get('vista');
+if(['dashboard','ingredients','products','history','more'].includes(vistaInicial))currentView=vistaInicial;
 render();
 
 </script>
