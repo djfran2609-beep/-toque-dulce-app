@@ -31,7 +31,7 @@
 <main class="app">
   <header>
     <div class="marca"><div class="logo">$</div><div><h1>Calculadora de costos</h1><div class="sub">Toque Dulce</div></div></div>
-    <div class="aislado">Este sector guarda ingredientes y recetas por separado. No modifica pedidos, producción ni historial.</div>
+    <div class="aislado">Ingredientes, recetas, cierres y ganancias se sincronizan entre los celulares autorizados. Al finalizar una semana también queda cerrada en la app principal.</div>
   </header>
 
   <section class="resumen">
@@ -92,13 +92,13 @@
       <div id="gananciaUnidad"></div>
     </div>
 
-    <div class="card">
-      <h2>Cierre semanal de ventas</h2>
+    <div id="cierreSemanal" class="card">
+      <h2>Finalizar semana</h2>
       <p class="ayuda">Los pedidos de negocios y la producción propia se leen automáticamente. Solamente indicá cuántos postres te quedaron. Al confirmar, los costos de esa semana quedan congelados y los aumentos futuros no los modifican.</p>
       <div id="estadoGestion"></div>
       <div class="campo" style="margin-top:12px"><label for="semanaCierre">Semana</label><select id="semanaCierre"></select></div>
       <div id="detalleCierre"></div>
-      <div class="botones" style="margin-top:12px"><button id="vendiTodo" class="btn" type="button">Vendí todo</button><button id="guardarCierre" class="btn principal" type="button">Confirmar cierre</button></div>
+      <div class="botones" style="margin-top:12px"><button id="vendiTodo" class="btn" type="button">Vendí todo</button><button id="guardarCierre" class="btn principal" type="button">Finalizar semana</button></div>
       <div id="resultadoSemana" style="margin-top:14px"></div>
     </div>
 
@@ -188,7 +188,20 @@
     try{const valor=JSON.parse(localStorage.getItem(CLAVE_GESTION));if(valor&&Array.isArray(valor.products)&&Array.isArray(valor.weeks))return valor;}catch(e){}
     return null;
   }
-  function guardar(){localStorage.setItem(CLAVE,JSON.stringify(datos));render();}
+  function guardar(opciones={}){
+    localStorage.setItem(CLAVE,JSON.stringify(datos));
+    render();
+    if(!opciones.silencioso)window.dispatchEvent(new CustomEvent('toqueDulceCostosChanged'));
+  }
+  window.toqueDulceCostosSync={
+    getState:()=>JSON.parse(JSON.stringify(datos)),
+    applyState:nuevo=>{
+      datos=normalizar(JSON.parse(JSON.stringify(nuevo||{})));
+      gestion=cargarGestion();
+      localStorage.setItem(CLAVE,JSON.stringify(datos));
+      render();
+    }
+  };
   function avisar(mensaje){const t=$('toast');t.textContent=mensaje;t.classList.add('ver');clearTimeout(avisar.timer);avisar.timer=setTimeout(()=>t.classList.remove('ver'),1800);}
   function costoUnitario(ing){return numero(ing.precio)/numero(ing.cantidad);}
   function costoReceta(rec){return rec.items.reduce((s,item)=>{const ing=datos.ingredientes.find(i=>i.id===item.ingredienteId);return s+(ing?costoUnitario(ing)*numero(item.cantidad):0);},0);}
@@ -287,7 +300,11 @@
       restantes[pid]=restante;ventasPublico[pid]=disponible-restante;preciosPublico[pid]=anterior?.preciosPublico?.[pid]??precioGestion(productoGestion(pid),'public');
     }
     datos.cierres[semana.id]={weekId:semana.id,label:semana.label||'Semana',startDate:semana.startDate||'',restantes,ventasPublico,preciosPublico,nombres,costosUnitarios,costosCongeladosEn:anterior?.costosCongeladosEn||new Date().toISOString(),guardadoEn:new Date().toISOString()};
-    guardar();avisar('Cierre semanal guardado');
+    semana.status='closed';
+    localStorage.setItem(CLAVE_GESTION,JSON.stringify(gestion));
+    guardar();
+    window.dispatchEvent(new CustomEvent('toqueDulceSemanaFinalizada',{detail:{weekId:semana.id}}));
+    avisar('Semana finalizada y ganancias guardadas');
   }
 
   $('exportar').addEventListener('click',()=>{const blob=new Blob([JSON.stringify(datos,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='copia-costos-toque-dulce.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);});
@@ -459,8 +476,18 @@
     renderGanancias();
     renderTops();
   }
+  const cierreSolicitado=new URLSearchParams(location.search).get('cerrar');
+  if(cierreSolicitado){
+    datos.semanaCierreId=cierreSolicitado;
+    localStorage.setItem(CLAVE,JSON.stringify(datos));
+  }
   render();
+  if(cierreSolicitado){
+    document.querySelector('[data-vista="ganancias"]')?.click();
+    setTimeout(()=>document.getElementById('cierreSemanal')?.scrollIntoView({behavior:'smooth',block:'start'}),120);
+  }
 })();
 </script>
+<script src="firebase-costos-sync.js?v=1" defer></script>
 </body>
 </html>
