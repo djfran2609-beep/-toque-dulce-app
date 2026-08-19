@@ -128,8 +128,8 @@
     </div>
 
     <div class="card">
-      <h2>Reparto por postre</h2>
-      <p class="ayuda">Los egresos se reparten en partes iguales entre todas las unidades vendidas del mes.</p>
+      <h2>Reparto por postre · semana seleccionada</h2>
+      <p class="ayuda">Muestra únicamente las ventas de la semana elegida arriba. Los egresos del mes se reparten por unidad como hasta ahora.</p>
       <div id="repartoPostres"></div>
     </div>
   </section>
@@ -335,6 +335,35 @@
     return Object.values(mapa);
   }
 
+  function ventasCalculadasDeSemana(semana){
+    const mapa={};
+    const sumar=(nombre,canal,cantidad,ingreso,costoUnitarioHistorico)=>{
+      const clave=claveNombre(nombre);if(!clave||cantidad<=0)return;
+      if(!mapa[clave])mapa[clave]={nombre,negocio:0,publico:0,ingresoNegocio:0,ingresoPublico:0,costoProduccion:0,unidadesSinCosto:0};
+      mapa[clave][canal]+=cantidad;mapa[clave][canal==='negocio'?'ingresoNegocio':'ingresoPublico']+=ingreso;
+      if(costoUnitarioHistorico===null||!Number.isFinite(Number(costoUnitarioHistorico)))mapa[clave].unidadesSinCosto+=cantidad;
+      else mapa[clave].costoProduccion+=cantidad*Number(costoUnitarioHistorico);
+    };
+    if(!semana)return [];
+    const cierre=datos.cierres[semana.id];
+    (semana.orders||[]).forEach(o=>(o.items||[]).forEach(i=>{
+      const p=productoGestion(i.productId),nombre=cierre?.nombres?.[i.productId]||p?.name||'Postre',receta=recetaPorNombre(nombre),costo=cierre?costoDelCierre(cierre,i.productId,nombre):(receta?costoReceta(receta):null),cantidad=numero(i.qty),precio=numero(i.unitPrice??precioGestion(p,'business'));
+      sumar(nombre,'negocio',cantidad,cantidad*precio,costo);
+    }));
+    if(cierre){
+      Object.entries(cierre.ventasPublico||{}).forEach(([pid,valor])=>{
+        const p=productoGestion(pid),nombre=cierre.nombres?.[pid]||p?.name||'Postre',cantidad=numero(valor),precio=numero(cierre.preciosPublico?.[pid]??precioGestion(p,'public'));
+        sumar(nombre,'publico',cantidad,cantidad*precio,costoDelCierre(cierre,pid,nombre));
+      });
+    }else{
+      (semana.publicSales||[]).forEach(v=>{
+        const p=productoGestion(v.productId),nombre=p?.name||'Postre',receta=recetaPorNombre(nombre),cantidad=numero(v.qty),precio=numero(v.unitPrice??precioGestion(p,'public'));
+        sumar(nombre,'publico',cantidad,cantidad*precio,receta?costoReceta(receta):null);
+      });
+    }
+    return Object.values(mapa);
+  }
+
   function renderGanancias(){
     gestion=cargarGestion();
     const mes=datos.mesActivo,egresos=datos.egresos.filter(e=>e.mes===mes);
@@ -358,14 +387,17 @@
     $('listaEgresos').innerHTML=egresos.length?egresos.map(e=>`<div class="egreso-item"><div><div class="nombre">${escapar(e.concepto)}</div><div class="detalle">${dinero(e.monto)}</div></div><button class="btn chico peligro" onclick="borrarEgreso('${e.id}')">Eliminar</button></div>`).join(''):'<div class="lista-vacia">Todavía no cargaste egresos para este mes.</div>';
 
     const ventas=ventasCalculadasDelMes(mes).map(v=>{const unidades=v.negocio+v.publico,ingreso=v.ingresoNegocio+v.ingresoPublico,completa=v.unidadesSinCosto===0,bruta=completa?ingreso-v.costoProduccion:null;return {...v,unidades,ingreso,completa,bruta};});
+    const semanaSeleccionada=semanas.find(w=>w.id===datos.semanaCierreId)||null;
+    const ventasSemana=ventasCalculadasDeSemana(semanaSeleccionada).map(v=>{const unidades=v.negocio+v.publico,ingreso=v.ingresoNegocio+v.ingresoPublico,completa=v.unidadesSinCosto===0,bruta=completa?ingreso-v.costoProduccion:null;return {...v,unidades,ingreso,completa,bruta};});
     const totalUnidades=ventas.reduce((s,v)=>s+v.unidades,0),conCosto=ventas.filter(v=>v.completa),brutaTotal=conCosto.reduce((s,v)=>s+v.bruta,0),egresosTotal=egresos.reduce((s,e)=>s+numero(e.monto),0),egresoUnidad=totalUnidades?egresosTotal/totalUnidades:0,netaTotal=brutaTotal-egresosTotal,faltantes=ventas.filter(v=>!v.completa),cierresAntiguos=Object.values(datos.cierres).filter(c=>String(c.startDate||'').slice(0,7)===mes&&!cierreConCostosCongelados(c));
     $('totalUnidades').textContent=formato(totalUnidades);$('gananciaBrutaMes').textContent=dinero(brutaTotal);$('totalEgresos').textContent=dinero(egresosTotal);$('gananciaNetaMes').textContent=dinero(netaTotal);$('cajaNeta').classList.toggle('negativo',netaTotal<0);
     $('avisoRecetas').innerHTML=(faltantes.length?`<div class="estado-aviso">Falta el costo histórico de: <strong>${faltantes.map(v=>escapar(v.nombre)).join(', ')}</strong>. Hasta entonces el resultado mensual es incompleto.</div>`:`<div class="estado-ok">Todos los postres vendidos tienen su costo histórico guardado.</div>`)+(cierresAntiguos.length?'<div class="estado-aviso" style="margin-top:10px">Hay cierres anteriores sin costos congelados. Seleccionalos y tocá <strong>Actualizar cierre</strong>.</div>':'');
-    $('repartoPostres').innerHTML=ventas.length?ventas.sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(v=>{
+    const etiquetaSemana=semanaSeleccionada?`<div class="estado-ok" style="margin-bottom:10px">Mostrando: <strong>${escapar(semanaSeleccionada.label||semanaSeleccionada.startDate||'Semana')}</strong></div>`:'';
+    $('repartoPostres').innerHTML=etiquetaSemana+(ventasSemana.length?ventasSemana.sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(v=>{
       if(!v.completa)return `<div class="receta-card"><div class="receta-top"><div><div class="nombre">${escapar(v.nombre)}</div><div class="detalle">${formato(v.unidades)} unidades · ${formato(v.negocio)} negocio · ${formato(v.publico)} público</div></div><div class="texto-rojo"><strong>Falta costo</strong></div></div></div>`;
       const asignados=v.unidades*egresoUnidad,neta=v.bruta-asignados;
       return `<div class="receta-card"><div class="receta-top"><div><div class="nombre">${escapar(v.nombre)}</div><div class="detalle">${formato(v.unidades)} unidades · ${formato(v.negocio)} negocio · ${formato(v.publico)} público</div></div><div class="total ${neta<0?'texto-rojo':''}">${dinero(neta)}</div></div><div class="reparto"><div><span>Facturación</span><strong>${dinero(v.ingreso)}</strong></div><div><span>Costo histórico de producción</span><strong>− ${dinero(v.costoProduccion)}</strong></div><div><span>Ganancia bruta</span><strong>${dinero(v.bruta)}</strong></div><div><span>Egresos asignados</span><strong>− ${dinero(asignados)}</strong></div><div><span>Ganancia neta estimada</span><strong>${dinero(neta)}</strong></div><div><span>Neta promedio por unidad</span><strong>${dinero(neta/v.unidades)}</strong></div></div></div>`;
-    }).join(''):'<div class="lista-vacia">Todavía no hay ventas contabilizadas para este mes.</div>';
+    }).join(''):'<div class="lista-vacia">Todavía no hay ventas contabilizadas en esta semana.</div>');
   }
 
   function render(){
