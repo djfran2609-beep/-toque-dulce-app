@@ -24,14 +24,15 @@
     .venta-card{border:1px solid var(--borde);border-radius:14px;padding:12px;margin-top:9px}.venta-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}.venta-grid label{font-size:10px}.venta-grid input{padding:10px}.egreso-item{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid var(--borde);padding:10px 0}.egreso-item:first-child{border-top:0}.reparto{background:#faf7f8;border-radius:12px;padding:9px 10px;margin-top:9px}.reparto div{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:3px 0}.positivo{color:var(--verde)}.texto-rojo{color:var(--rojo)}
     .cierre-fila{display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:10px;align-items:center;border-top:1px solid var(--borde);padding:11px 0}.cierre-fila:first-child{border-top:0}.cierre-fila input{text-align:center;padding:10px}.disponible{font-size:12px;color:var(--suave);margin-top:3px}.estado-ok{border:1px solid #cfeedd;background:#f1fff7;color:#237147;border-radius:12px;padding:10px 12px;font-size:12px}.estado-aviso{border:1px solid #f0d9e2;background:#fff7fa;color:#855468;border-radius:12px;padding:10px 12px;font-size:12px}
     .barra-final{margin-top:16px;display:flex;gap:8px}.nota{font-size:11px;color:var(--suave);line-height:1.45}.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:#2d2227;color:white;padding:11px 16px;border-radius:12px;opacity:0;pointer-events:none;transition:.2s;z-index:20;font-size:13px}.toast.ver{opacity:1;transform:translateX(-50%) translateY(0)}
-    @media(max-width:480px){.grid{grid-template-columns:1fr}.campo.todo{grid-column:auto}.app{padding-left:11px;padding-right:11px}.receta-linea{grid-template-columns:1fr 82px 38px}.resumen{gap:6px}.mini{padding:11px 8px}.mini strong{font-size:17px}.tab{font-size:12px;padding:11px 4px}.tabla-simple{font-size:11px}.tabla-simple th,.tabla-simple td{padding-left:3px;padding-right:3px}}
+    .resumen-semana{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}.dato-semana{border:1px solid var(--borde);background:linear-gradient(145deg,#fff,#fff5f9);border-radius:16px;padding:13px 11px;min-width:0}.dato-semana span{display:block;color:var(--suave);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.35px}.dato-semana strong{display:block;font-size:18px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dato-semana small{display:block;color:var(--suave);font-size:10px;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.dato-semana.destacado{background:linear-gradient(145deg,#fff0f6,#ffe4ee);border-color:#f4c9d9}.detalle-desplegable summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px}.detalle-desplegable summary::-webkit-details-marker{display:none}.detalle-desplegable summary strong{display:block;font-size:18px}.detalle-desplegable summary span{display:block;color:var(--suave);font-size:11px;margin-top:3px}.detalle-desplegable summary:after{content:'Ver';color:var(--rosa);font-size:12px;font-weight:850}.detalle-desplegable[open] summary:after{content:'Ocultar'}.detalle-desplegable[open] summary{padding-bottom:12px;border-bottom:1px solid var(--borde);margin-bottom:10px}
+    @media(max-width:480px){.grid{grid-template-columns:1fr}.campo.todo{grid-column:auto}.app{padding-left:11px;padding-right:11px}.receta-linea{grid-template-columns:1fr 82px 38px}.resumen{gap:6px}.mini{padding:11px 8px}.mini strong{font-size:17px}.tab{font-size:12px;padding:11px 4px}.tabla-simple{font-size:11px}.tabla-simple th,.tabla-simple td{padding-left:3px;padding-right:3px}.resumen-semana{gap:6px}.dato-semana{padding:11px 8px}.dato-semana strong{font-size:15px}.dato-semana span{font-size:9px}}
   </style>
 </head>
 <body>
 <main class="app">
   <header>
     <div class="marca"><div class="logo">$</div><div><h1>Calculadora de costos</h1><div class="sub">Toque Dulce</div></div></div>
-    <div class="aislado">Ingredientes, recetas, cierres y ganancias se sincronizan entre los celulares autorizados. Al finalizar una semana también queda cerrada en la app principal.</div>
+    <div class="aislado">Todo se sincroniza entre los dos celulares autorizados. Al finalizar una semana también queda cerrada en la app principal.</div>
   </header>
 
   <section class="resumen">
@@ -42,9 +43,9 @@
 
   <nav>
     <button class="tab activo" data-vista="ingredientes">Ingredientes</button>
-    <button class="tab" data-vista="recetas">Postres y recetas</button>
+    <button class="tab" data-vista="recetas">Recetas</button>
     <button class="tab" data-vista="ganancias">Ganancias</button>
-    <button class="tab" data-vista="tops">Top postres</button>
+    <button class="tab" data-vista="tops">Ranking</button>
   </nav>
 
   <section id="ingredientes" class="vista activa">
@@ -86,21 +87,27 @@
   </section>
 
   <section id="ganancias" class="vista">
-    <div class="card">
-      <h2>Ganancia bruta por unidad</h2>
-      <p class="ayuda">Se calcula con el costo de la receta y los precios de venta. Los postres nuevos aparecerán automáticamente.</p>
-      <div id="gananciaUnidad"></div>
+    <div class="resumen-semana">
+      <div class="dato-semana destacado"><span>Ganancia semanal</span><strong id="semanaGanancia">$0</strong><small id="semanaNombre">Sin ventas</small></div>
+      <div class="dato-semana"><span>Vendidos</span><strong id="semanaUnidades">0</strong><small>negocio + público</small></div>
+      <div class="dato-semana"><span>Más vendido</span><strong id="semanaTop">—</strong><small id="semanaTopCantidad">Sin ventas</small></div>
     </div>
+    <div id="alertaSemana" class="estado-aviso"></div>
 
     <div id="cierreSemanal" class="card">
       <h2>Finalizar semana</h2>
-      <p class="ayuda">Los pedidos de negocios y la producción propia se leen automáticamente. Solamente indicá cuántos postres te quedaron. Al confirmar, los costos de esa semana quedan congelados y los aumentos futuros no los modifican.</p>
+      <p class="ayuda">Los pedidos de negocios y la producción propia se leen automáticamente. Indicá cuántos postres quedaron; al finalizar se guardan las ventas y los costos históricos.</p>
       <div id="estadoGestion"></div>
       <div class="campo" style="margin-top:12px"><label for="semanaCierre">Semana</label><select id="semanaCierre"></select></div>
       <div id="detalleCierre"></div>
       <div class="botones" style="margin-top:12px"><button id="vendiTodo" class="btn" type="button">Vendí todo</button><button id="guardarCierre" class="btn principal" type="button">Finalizar semana</button></div>
       <div id="resultadoSemana" style="margin-top:14px"></div>
     </div>
+
+    <details class="card detalle-desplegable">
+      <summary><div><strong>Ganancia por unidad</strong><span>Costo y ganancia de cada postre</span></div></summary>
+      <div id="gananciaUnidad"></div>
+    </details>
 
     <div class="card">
       <h2>Resultado mensual</h2>
@@ -404,7 +411,7 @@
       $('semanaCierre').disabled=false;$('semanaCierre').innerHTML=semanas.map(w=>`<option value="${w.id}" ${w.id===datos.semanaCierreId?'selected':''}>${escapar(w.label||w.startDate||'Semana')} ${datos.cierres[w.id]?'· cerrada':''}</option>`).join('');
       const semana=semanas.find(w=>w.id===datos.semanaCierreId),filas=filasParaCierre(semana),pedidos=(semana.orders||[]).reduce((s,o)=>s+(o.items||[]).reduce((t,i)=>t+numero(i.qty),0),0),cierre=datos.cierres[semana.id];
       $('detalleCierre').innerHTML=`<div class="estado-aviso" style="margin-bottom:10px">${formato(pedidos)} postres de negocios ya contabilizados automáticamente.</div>${filas.length?filas.map(f=>`<div class="cierre-fila"><div><div class="nombre">${escapar(f.p.name)}</div><div class="disponible">Stock anterior ${formato(f.stockAnterior)} + producidos ${formato(f.producidos)} = <strong>${formato(f.disponibles)} disponibles</strong><br>Vendidos: <strong id="vendidos_${f.p.id}">${formato(Math.max(0,f.disponibles-numero(f.restante)))}</strong></div></div><div><label>Me quedaron</label><input class="sobrante-input" data-pid="${f.p.id}" data-disponible="${f.disponibles}" type="number" inputmode="numeric" min="0" max="${f.disponibles}" step="1" value="${numero(f.restante)}" oninput="actualizarCierreVista()"></div></div>`).join(''):'<div class="lista-vacia">No hay producción propia ni stock anterior para cerrar.</div>'}`;
-      $('vendiTodo').disabled=!filas.length;$('guardarCierre').disabled=!filas.length&&pedidos<=0;$('guardarCierre').textContent=cierre?'Actualizar cierre':'Confirmar cierre';
+      $('vendiTodo').disabled=!filas.length;$('guardarCierre').disabled=!filas.length&&pedidos<=0;$('guardarCierre').textContent=cierre?'Actualizar cierre':'Finalizar semana';
       renderResultadoSemana(semana);
     }else{
       $('semanaCierre').disabled=true;$('semanaCierre').innerHTML='<option>Sin semanas</option>';$('detalleCierre').innerHTML='<div class="lista-vacia">Abrí primero la aplicación principal para cargar sus datos.</div>';$('resultadoSemana').innerHTML='';$('vendiTodo').disabled=true;$('guardarCierre').disabled=true;
@@ -416,6 +423,15 @@
     const semanaSeleccionada=semanas.find(w=>w.id===datos.semanaCierreId)||null;
     const ventasSemana=ventasCalculadasDeSemana(semanaSeleccionada).map(v=>{const unidades=v.negocio+v.publico,ingreso=v.ingresoNegocio+v.ingresoPublico,completa=v.unidadesSinCosto===0,bruta=completa?ingreso-v.costoProduccion:null;return {...v,unidades,ingreso,completa,bruta};});
     const totalUnidades=ventas.reduce((s,v)=>s+v.unidades,0),conCosto=ventas.filter(v=>v.completa),brutaTotal=conCosto.reduce((s,v)=>s+v.bruta,0),egresosTotal=egresos.reduce((s,e)=>s+numero(e.monto),0),egresoUnidad=totalUnidades?egresosTotal/totalUnidades:0,netaTotal=brutaTotal-egresosTotal,faltantes=ventas.filter(v=>!v.completa),cierresAntiguos=Object.values(datos.cierres).filter(c=>String(c.startDate||'').slice(0,7)===mes&&!cierreConCostosCongelados(c));
+    const semanaUnidades=ventasSemana.reduce((s,v)=>s+v.unidades,0),semanaCompleta=ventasSemana.every(v=>v.completa),semanaBruta=ventasSemana.filter(v=>v.completa).reduce((s,v)=>s+v.bruta,0),semanaNeta=semanaBruta-(semanaUnidades*egresoUnidad),topSemana=ventasSemana.slice().sort((a,b)=>b.unidades-a.unidades||a.nombre.localeCompare(b.nombre))[0],cierreSemana=semanaSeleccionada?datos.cierres[semanaSeleccionada.id]:null;
+    $('semanaGanancia').textContent=semanaUnidades?(semanaCompleta?dinero(semanaNeta):'Incompleta'):dinero(0);
+    $('semanaGanancia').classList.toggle('texto-rojo',semanaCompleta&&semanaNeta<0);
+    $('semanaNombre').textContent=semanaSeleccionada?(semanaSeleccionada.label||semanaSeleccionada.startDate||'Semana'):'Sin semana';
+    $('semanaUnidades').textContent=formato(semanaUnidades);
+    $('semanaTop').textContent=topSemana?topSemana.nombre:'—';
+    $('semanaTopCantidad').textContent=topSemana?`${formato(topSemana.unidades)} vendidos`:'Sin ventas';
+    $('alertaSemana').className=cierreSemana&&semanaCompleta?'estado-ok':'estado-aviso';
+    $('alertaSemana').innerHTML=!semanaSeleccionada?'No hay una semana seleccionada.':!semanaCompleta?'⚠️ Faltan costos de recetas para calcular la ganancia completa.':cierreSemana?'✓ Semana finalizada: ventas y costos históricos guardados.':'Semana en curso: los pedidos ya aparecen; el público se completa al finalizar.';
     $('totalUnidades').textContent=formato(totalUnidades);$('gananciaBrutaMes').textContent=dinero(brutaTotal);$('totalEgresos').textContent=dinero(egresosTotal);$('gananciaNetaMes').textContent=dinero(netaTotal);$('cajaNeta').classList.toggle('negativo',netaTotal<0);
     $('avisoRecetas').innerHTML=(faltantes.length?`<div class="estado-aviso">Falta el costo histórico de: <strong>${faltantes.map(v=>escapar(v.nombre)).join(', ')}</strong>. Hasta entonces el resultado mensual es incompleto.</div>`:`<div class="estado-ok">Todos los postres vendidos tienen su costo histórico guardado.</div>`)+(cierresAntiguos.length?'<div class="estado-aviso" style="margin-top:10px">Hay cierres anteriores sin costos congelados. Seleccionalos y tocá <strong>Actualizar cierre</strong>.</div>':'');
     const etiquetaSemana=semanaSeleccionada?`<div class="estado-ok" style="margin-bottom:10px">Mostrando: <strong>${escapar(semanaSeleccionada.label||semanaSeleccionada.startDate||'Semana')}</strong></div>`:'';
@@ -476,16 +492,15 @@
     renderGanancias();
     renderTops();
   }
-  const cierreSolicitado=new URLSearchParams(location.search).get('cerrar');
+  const parametros=new URLSearchParams(location.search),cierreSolicitado=parametros.get('cerrar'),vistaSolicitada=parametros.get('vista');
   if(cierreSolicitado){
     datos.semanaCierreId=cierreSolicitado;
     localStorage.setItem(CLAVE,JSON.stringify(datos));
   }
   render();
-  if(cierreSolicitado){
-    document.querySelector('[data-vista="ganancias"]')?.click();
-    setTimeout(()=>document.getElementById('cierreSemanal')?.scrollIntoView({behavior:'smooth',block:'start'}),120);
-  }
+  const vistaInicial=cierreSolicitado?'ganancias':(['ingredientes','recetas','ganancias','tops'].includes(vistaSolicitada)?vistaSolicitada:null);
+  if(vistaInicial)document.querySelector(`[data-vista="${vistaInicial}"]`)?.click();
+  if(cierreSolicitado)setTimeout(()=>document.getElementById('cierreSemanal')?.scrollIntoView({behavior:'smooth',block:'start'}),120);
 })();
 </script>
 <script src="firebase-costos-sync.js?v=1" defer></script>
