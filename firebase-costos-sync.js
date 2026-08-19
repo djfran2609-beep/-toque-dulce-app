@@ -144,6 +144,31 @@
     });
   }
 
+  function appNameKey(text){
+  const key=String(text||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+  return key==="crema de leche"||key==="crema leche"?"crema":key;
+}
+
+  function mergeAppCatalog(localValue,remoteValue){
+  if(!localValue&&!remoteValue)return null;
+  if(!remoteValue)return clone(localValue);
+  if(!localValue)return clone(remoteValue);
+  const output=clone(remoteValue);
+  const mergeNamed=(remoteList,localList)=>{
+    const result=clone(Array.isArray(remoteList)?remoteList:[]),byId=new Map(),byName=new Map();
+    result.forEach(item=>{if(item?.id)byId.set(String(item.id),item);const key=appNameKey(item?.name);if(key)byName.set(key,item);});
+    (Array.isArray(localList)?localList:[]).forEach(item=>{
+      const target=byId.get(String(item?.id))||byName.get(appNameKey(item?.name));
+      if(target)Object.assign(target,clone(item),{id:target.id});
+      else{const added=clone(item);result.push(added);if(added?.id)byId.set(String(added.id),added);const key=appNameKey(added?.name);if(key)byName.set(key,added);}
+    });
+    return result.sort((a,b)=>String(a?.name||"").localeCompare(String(b?.name||""),"es",{sensitivity:"base"}));
+  };
+  output.ingredients=mergeNamed(remoteValue.ingredients,localValue.ingredients);
+  output.products=mergeNamed(remoteValue.products,localValue.products);
+  return output;
+}
+
   function installStyles() {
     if (document.getElementById("td-costos-cloud-style")) return;
     const style = document.createElement("style");
@@ -297,6 +322,18 @@
     cloudRef = firebaseFns.doc(db, "toqueDulce", "appState");
     try {
       const first = await firebaseFns.getDoc(cloudRef);
+      const remoteAppRaw = first.data()?.state, localApp = bridge.getGestionState?.();
+      const mergedApp = mergeAppCatalog(localApp, remoteAppRaw);
+      if (mergedApp) {
+        bridge.applyGestionState?.(mergedApp);
+        if (!same(mergedApp, remoteAppRaw)) {
+          await firebaseFns.setDoc(cloudRef, {
+            state: clone(mergedApp),
+            updatedAt: firebaseFns.serverTimestamp(),
+            updatedBy: user.uid
+          }, { merge: true });
+        }
+      }
       const remoteRaw = first.data()?.costosState;
       const local = normalize(bridge.getState());
       let merged = local;
@@ -316,8 +353,10 @@
       cloudReady = true;
       unsubscribeSnapshot?.();
       unsubscribeSnapshot = firebaseFns.onSnapshot(cloudRef, snapshot => {
-        const remoteRawNow = snapshot.data()?.costosState;
-        if (!remoteRawNow) return;
+        const snapshotData = snapshot.data(), remoteAppNow = snapshotData?.state;
+        if (remoteAppNow) bridge.applyGestionState?.(remoteAppNow);
+        const remoteRawNow = snapshotData?.costosState;
+        if (!remoteRawNow) { badge("☁️ Sincronizado", "ok"); return; }
         const remote = normalize(remoteRawNow);
         const localNow = normalize(bridge.getState());
         if (same(localNow, lastSyncedState)) {
