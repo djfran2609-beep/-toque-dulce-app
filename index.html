@@ -89,6 +89,9 @@ button:disabled { opacity: .5; cursor: default; }
 .action-card .ico { font-size:24px; }
 .action-card strong { display:block; margin-top:8px; font-size:14px; }
 .action-card small { color:var(--muted); display:block; margin-top:3px; line-height:1.3; }
+.action-card.profit { background:linear-gradient(145deg,#fff0f6,#ffe2ed); border-color:#f5bfd3; }
+.action-card.profit .ico { filter:drop-shadow(0 4px 8px rgba(240,91,146,.18)); }
+.action-card.profit strong { color:#a72f5d; }
 .btn { border:0; border-radius:14px; padding:12px 14px; font-weight:800; color:var(--ink); background:#f5edf1; }
 .btn.primary { color:white; background:linear-gradient(135deg,var(--brand),var(--brand-2)); }
 .btn.ghost { background:#fff; border:1px solid var(--line); }
@@ -397,8 +400,8 @@ function renderView(){
 
 function renderDashboard(){
   const w=currentWeek(), bt=businessTotals(w), ot=ownTotals(w), st=salesTotals(w), prod=productionByProduct(w);
-  const prodQty=Object.values(prod).reduce((a,b)=>a+n(b),0), stock=Object.values(stockByProduct(w)).reduce((a,b)=>a+Math.max(0,n(b)),0);
-  return `${hero('Esta semana','Todo lo importante en un solo lugar',`<span class="week-pill">${w.status==='open'?'Activa':'Cerrada'}</span>`)}
+  const prodQty=Object.values(prod).reduce((a,b)=>a+n(b),0), stock=Object.values(stockByProduct(w)).reduce((a,b)=>a+Math.max(0,n(b)),0),avisoCierre=weekShouldClose(w)?`<div class="note" style="margin-bottom:12px"><strong>Semana lista para finalizar</strong><br>Guardá los sobrantes para calcular la ganancia sin mezclar semanas.<button class="btn primary wide" style="margin-top:10px" onclick="openWeekClose('${w.id}')">Finalizar semana</button></div>`:'';
+  return `${hero('Esta semana','Todo lo importante en un solo lugar',`<span class="week-pill">${w.status==='open'?'Activa':'Cerrada'}</span>`)}${avisoCierre}
     <div class="grid grid-2">
       <div class="card stat-card"><div><div class="eyebrow">Negocios</div><div class="value">${money(bt.money)}</div></div><div class="sub">${bt.qty} postres · total a cobrar</div></div>
       <div class="card stat-card"><div><div class="eyebrow">Producción total</div><div class="value">${prodQty}</div></div><div class="sub">postres a fabricar</div></div>
@@ -407,6 +410,7 @@ function renderDashboard(){
     </div>
     <div class="section"><div class="section-title"><h3>Accesos rápidos</h3></div><div class="action-grid">
       ${action('🗓️','Nueva semana','Cerrar y empezar otra',"openNewWeekModal()")}
+      ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=9&vista=ganancias'",'profit')}
       ${action('🧾','Nuevo pedido','Cargar un negocio',"openOrderModal()")}
       ${action('🍓','Producción propia','Lo que venden ustedes',"go('own')")}
       ${action('📋','Lista de producción','Suma negocios + público',"go('production')")}
@@ -420,7 +424,7 @@ function renderDashboard(){
       <div class="total-box"><div class="label">Negocios + ventas reales al público</div><div class="big">${money(bt.money+st.money)}</div><div class="meta">No descuenta costos de producción.</div></div>
     </div>`;
 }
-function action(ico,title,sub,on){ return `<button class="action-card" onclick="${on}"><div class="ico">${ico}</div><strong>${esc(title)}</strong><small>${esc(sub)}</small></button>`; }
+function action(ico,title,sub,on,extra=''){ return `<button class="action-card ${extra}" onclick="${on}"><div class="ico">${ico}</div><strong>${esc(title)}</strong><small>${esc(sub)}</small></button>`; }
 
 function renderOrders(){
   const w=currentWeek(), bt=businessTotals(w);
@@ -604,7 +608,12 @@ function weekHasCostClose(id){
   try{return Boolean(JSON.parse(localStorage.getItem('toqueDulce_calculadoraCostos_v1'))?.cierres?.[id]);}
   catch(_){return false;}
 }
-function openWeekClose(id){window.location.href='Costos.html?v=8&cerrar='+encodeURIComponent(id);}
+function weekShouldClose(w){
+  if(!w||w.status!=='open'||!weekHasActivity(w)||weekHasCostClose(w.id)||!w.startDate)return false;
+  const inicio=new Date(`${w.startDate}T12:00:00`),hoy=new Date();
+  return Number.isFinite(inicio.getTime())&&Math.floor((hoy-inicio)/86400000)>=6;
+}
+function openWeekClose(id){window.location.href='Costos.html?v=9&cerrar='+encodeURIComponent(id);}
 function openNewWeekModal(){
   const activa=currentWeek();
   if(activa?.status==='open'&&weekHasActivity(activa)&&!weekHasCostClose(activa.id)){
@@ -643,13 +652,15 @@ function importBackup(file){if(!file)return;const r=new FileReader();r.onload=()
 function resetApp(){if(!confirm('¿Restablecer toda la app? Esto elimina los datos actuales del dispositivo.'))return;state=seedState();saveState();showToast('Datos restablecidos');}
 
 function renderMore(){
-  return `${hero('Más','Administración de la app')}<div class="action-grid">
+  const w=currentWeek(),avisoCierre=weekShouldClose(w)?`<div class="note" style="margin-bottom:12px"><strong>Semana pendiente de finalizar</strong><br>Completá el cierre para guardar la ganancia correcta.<button class="btn primary wide" style="margin-top:10px" onclick="openWeekClose('${w.id}')">Finalizar semana</button></div>`:'';
+  return `${hero('Más','Administración de la app')}${avisoCierre}<div class="action-grid">
+    ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=9&vista=ganancias'",'profit')}
     ${action('🏪','Negocios','Agregar o editar clientes',"go('businesses')")}
     ${action('🍰','Postres','Crear nuevas variedades',"go('products')")}
     ${action('🥛','Materia prima','Precios e ingredientes',"go('ingredients')")}
     ${action('🛒','Lista ingredientes','Necesario para producir',"go('shopping')")}
     ${action('✅','Modo producción','Pendiente / haciendo / listo',"go('productionMode')")}
-    ${action('🧮','Calculadora de costos','Ingredientes, recetas y ganancias',"window.location.href='Costos.html?v=8'")}
+    ${action('🧮','Costos y recetas','Ingredientes y precios',"window.location.href='Costos.html?v=9'")}
     ${action('⚙️','Configuración','Precios y backups',"go('settings')")}
   </div>`;
 }
