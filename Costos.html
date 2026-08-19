@@ -12,7 +12,7 @@
     header{padding:24px 4px 16px}.marca{display:flex;align-items:center;gap:12px}.logo{width:52px;height:52px;border-radius:17px;background:linear-gradient(135deg,var(--rosa),var(--rosa2));display:grid;place-items:center;color:white;font-size:25px;box-shadow:var(--sombra)}
     h1{font-size:25px;margin:0;line-height:1.05}.sub{color:var(--suave);font-size:13px;margin-top:5px}.aislado{margin:12px 0 0;background:#fff;border:1px solid var(--borde);border-radius:12px;padding:10px 12px;font-size:12px;color:var(--suave)}
     .resumen{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:5px 0 14px}.mini{background:var(--tarjeta);border:1px solid var(--borde);border-radius:16px;padding:13px 10px;box-shadow:0 5px 16px rgba(91,36,58,.06)}.mini strong{font-size:19px;display:block}.mini span{font-size:11px;color:var(--suave)}
-    nav{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;position:sticky;top:0;z-index:5;padding:8px 0;background:rgba(255,247,250,.92);backdrop-filter:blur(12px)}.tab{border:1px solid var(--borde);background:#fff;color:var(--texto);border-radius:13px;padding:12px 7px;font-weight:750}.tab.activo{background:var(--rosa);border-color:var(--rosa);color:#fff}
+    nav{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;position:sticky;top:0;z-index:5;padding:8px 0;background:rgba(255,247,250,.92);backdrop-filter:blur(12px)}.tab{border:1px solid var(--borde);background:#fff;color:var(--texto);border-radius:13px;padding:12px 7px;font-weight:750}.tab.activo{background:var(--rosa);border-color:var(--rosa);color:#fff}
     .vista{display:none}.vista.activa{display:block}.card{background:var(--tarjeta);border:1px solid var(--borde);border-radius:19px;padding:16px;margin:12px 0;box-shadow:var(--sombra)}.card h2{font-size:18px;margin:0 0 4px}.ayuda{font-size:12px;color:var(--suave);margin:0 0 14px;line-height:1.4}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:11px}.campo{margin:0 0 11px}.campo.todo{grid-column:1/-1}label{display:block;font-size:12px;font-weight:750;margin:0 0 6px;color:#5c4852}input,select{width:100%;border:1px solid var(--borde);border-radius:12px;background:#fff;padding:12px;color:var(--texto);outline:none}input:focus,select:focus{border-color:var(--rosa);box-shadow:0 0 0 3px rgba(231,76,135,.12)}
     .botones{display:flex;gap:8px;flex-wrap:wrap}.btn{border:0;border-radius:12px;padding:11px 14px;font-weight:780;background:#f4e8ed;color:#5f3e4c}.btn.principal{background:var(--rosa);color:#fff;flex:1}.btn.peligro{color:var(--rojo)}.btn.chico{padding:8px 10px;font-size:12px}.oculto{display:none!important}
@@ -44,6 +44,7 @@
     <button class="tab activo" data-vista="ingredientes">Ingredientes</button>
     <button class="tab" data-vista="recetas">Postres y recetas</button>
     <button class="tab" data-vista="ganancias">Ganancias</button>
+    <button class="tab" data-vista="tops">Top postres</button>
   </nav>
 
   <section id="ingredientes" class="vista activa">
@@ -131,6 +132,14 @@
       <h2>Reparto por postre · semana seleccionada</h2>
       <p class="ayuda">Muestra únicamente las ventas de la semana elegida arriba. Los egresos del mes se reparten por unidad como hasta ahora.</p>
       <div id="repartoPostres"></div>
+    </div>
+  </section>
+
+  <section id="tops" class="vista">
+    <div class="card">
+      <h2>Top de postres por semana</h2>
+      <p class="ayuda">Cada semana aparece por separado. Se ordenan del más vendido al menos vendido sumando negocios y público.</p>
+      <div id="listaTops"></div>
     </div>
   </section>
 
@@ -400,6 +409,44 @@
     }).join(''):'<div class="lista-vacia">Todavía no hay ventas contabilizadas en esta semana.</div>');
   }
 
+  function ventasParaTopDeSemana(semana){
+    const mapa={};
+    const sumar=(pid,nombre,canal,cantidad)=>{
+      cantidad=numero(cantidad);if(cantidad<=0)return;
+      const clave=pid||claveNombre(nombre);if(!clave)return;
+      if(!mapa[clave])mapa[clave]={pid,nombre:nombre||'Postre',negocio:0,publico:0};
+      mapa[clave][canal]+=cantidad;
+    };
+    if(!semana)return [];
+    const cierre=datos.cierres[semana.id];
+    (semana.orders||[]).forEach(o=>(o.items||[]).forEach(i=>{
+      const p=productoGestion(i.productId),nombre=cierre?.nombres?.[i.productId]||p?.name||'Postre';
+      sumar(i.productId,nombre,'negocio',i.qty);
+    }));
+    if(cierre){
+      Object.entries(cierre.ventasPublico||{}).forEach(([pid,cantidad])=>{
+        const p=productoGestion(pid),nombre=cierre.nombres?.[pid]||p?.name||'Postre';
+        sumar(pid,nombre,'publico',cantidad);
+      });
+    }else{
+      (semana.publicSales||[]).forEach(v=>{
+        const p=productoGestion(v.productId),nombre=p?.name||'Postre';
+        sumar(v.productId,nombre,'publico',v.qty);
+      });
+    }
+    return Object.values(mapa).map(v=>({...v,total:v.negocio+v.publico})).filter(v=>v.total>0).sort((a,b)=>b.total-a.total||a.nombre.localeCompare(b.nombre));
+  }
+
+  function renderTops(){
+    gestion=cargarGestion();
+    const semanas=semanasGestion().slice().reverse();
+    $('listaTops').innerHTML=semanas.length?semanas.map(semana=>{
+      const ventas=ventasParaTopDeSemana(semana),total=ventas.reduce((s,v)=>s+v.total,0),cierre=datos.cierres[semana.id];
+      const filas=ventas.length?`<table class="tabla-simple"><thead><tr><th># · Postre</th><th>Negocio</th><th>Público</th><th>Total</th></tr></thead><tbody>${ventas.map((v,i)=>`<tr><td><strong>${i+1}. ${escapar(v.nombre)}</strong></td><td>${formato(v.negocio)}</td><td>${formato(v.publico)}</td><td><strong>${formato(v.total)}</strong></td></tr>`).join('')}</tbody></table>`:'<div class="lista-vacia">Todavía no hay ventas contabilizadas en esta semana.</div>';
+      return `<div class="receta-card"><div class="receta-top"><div><div class="nombre">${escapar(semana.label||semana.startDate||'Semana')}</div><div class="detalle">${cierre?'Cierre confirmado':'Semana en curso · el público se completa al cerrar'}</div></div><div class="total">${formato(total)}</div></div><div class="detalle" style="margin:3px 0 10px">postres vendidos</div>${filas}</div>`;
+    }).join(''):'<div class="lista-vacia">Todavía no hay semanas cargadas.</div>';
+  }
+
   function render(){
     $('nIngredientes').textContent=datos.ingredientes.length;$('nRecetas').textContent=datos.recetas.length;
     const prom=datos.recetas.length?datos.recetas.reduce((s,r)=>s+costoReceta(r),0)/datos.recetas.length:0;$('promedio').textContent=dinero(prom);
@@ -410,6 +457,7 @@
       return `<div class="receta-card"><div class="receta-top"><div><div class="nombre">${escapar(r.nombre)}</div><div class="detalle">Costo total por unidad</div></div><div class="total">${dinero(costo)}</div></div><div class="desglose">${desglose}</div>${pn>0?`<div class="ganancia ${negN?'negativa':''}"><div><span>Venta a negocio</span><strong>${dinero(pn)}</strong></div><div><span>Ganancia</span><strong>${dinero(pn-costo)}</strong></div><div><span>Margen sobre venta</span><strong>${formato(margen(pn,costo))}%</strong></div></div>`:''}${pp>0?`<div class="ganancia ${pubN?'negativa':''}"><div><span>Venta al público</span><strong>${dinero(pp)}</strong></div><div><span>Ganancia</span><strong>${dinero(pp-costo)}</strong></div><div><span>Margen sobre venta</span><strong>${formato(margen(pp,costo))}%</strong></div></div>`:''}<div class="acciones"><button class="btn chico" onclick="editarReceta('${r.id}')">Editar</button><button class="btn chico peligro" onclick="borrarReceta('${r.id}')">Eliminar</button></div></div>`;
     }).join(''):'<div class="lista-vacia">Todavía no cargaste recetas.</div>';
     renderGanancias();
+    renderTops();
   }
   render();
 })();
