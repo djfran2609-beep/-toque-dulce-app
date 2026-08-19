@@ -277,7 +277,7 @@
           state: clone(merged),
           updatedAt: firebaseFns.serverTimestamp(),
           updatedBy: currentUser.uid
-        });
+        }, { merge: true });
 
         latestRemoteState = clone(merged);
         lastSyncedState = clone(merged);
@@ -295,7 +295,7 @@
     if (!cloudReady || applyingRemote) return;
     clearTimeout(saveTimer);
     
-    saveTimer = setTimeout(() => firebaseFns.setDoc(cloudRef,{state:clone(state),updatedAt:firebaseFns.serverTimestamp(),updatedBy:currentUser.uid}).then(()=>setBadge("☁️ Sincronizado","ok")).catch(()=>setBadge("☁️ Sin conexión","error")),160);
+    saveTimer = setTimeout(() => firebaseFns.setDoc(cloudRef,{state:clone(state),updatedAt:firebaseFns.serverTimestamp(),updatedBy:currentUser.uid},{merge:true}).then(()=>setBadge("☁️ Sincronizado","ok")).catch(()=>setBadge("☁️ Sin conexión","error")),160);
   }
 
   async function connectCloud(user) {
@@ -326,7 +326,7 @@
           state: clone(state),
           updatedAt: firebaseFns.serverTimestamp(),
           updatedBy: user.uid
-        });
+        }, { merge: true });
         latestRemoteState = clone(state);
         lastSyncedState = clone(state);
       }
