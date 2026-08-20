@@ -126,9 +126,10 @@
         border-radius:28px;padding:24px;box-shadow:0 18px 50px rgba(83,39,58,.12)
       }
       #td-auth-brand{
-        width:58px;height:58px;border-radius:18px;display:grid;place-items:center;
-        background:linear-gradient(135deg,#f05b92,#ff8db5);font-size:28px;margin-bottom:16px
+        width:58px;height:58px;border-radius:18px;display:block;overflow:hidden;
+        background:#fff;margin-bottom:16px
       }
+      #td-auth-brand img{width:100%;height:100%;object-fit:cover;display:block}
       #td-auth-card h1{font-size:27px;line-height:1.05;margin:0 0 7px;letter-spacing:-.8px}
       #td-auth-card p{margin:0 0 18px;color:#7a6b73;line-height:1.45;font-size:14px}
       .td-auth-field{margin-bottom:12px}
@@ -200,7 +201,7 @@
     overlay.id = "td-auth-overlay";
     overlay.innerHTML = `
       <div id="td-auth-card">
-        <div id="td-auth-brand">🍰</div>
+        <div id="td-auth-brand"><img src="icon-512.png.PNG?v=2" alt="Logo Toque Dulce"></div>
         <h1>Toque Dulce</h1>
         <p>Ingresá con tu cuenta para ver y editar los pedidos compartidos.</p>
         <form id="td-auth-form">
@@ -247,7 +248,7 @@
     overlay.id = "td-auth-overlay";
     overlay.innerHTML = `
       <div id="td-auth-card">
-        <div id="td-auth-brand">🍰</div>
+        <div id="td-auth-brand"><img src="icon-512.png.PNG?v=2" alt="Logo Toque Dulce"></div>
         <h1>Toque Dulce</h1>
         <p>Sincronizando los datos compartidos…</p>
       </div>`;
