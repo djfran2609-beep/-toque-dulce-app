@@ -347,6 +347,11 @@ function orderMoney(order){ return order.items.reduce((s,i)=>s+n(i.qty)*n(i.unit
 function businessTotals(week=currentWeek()){
   return {qty:week.orders.reduce((s,o)=>s+orderQtyTotal(o),0), money:week.orders.reduce((s,o)=>s+orderMoney(o),0)};
 }
+function businessQtyByProduct(week=currentWeek()){
+  const out={};
+  week.orders.forEach(o=>o.items.forEach(i=>out[i.productId]=(out[i.productId]||0)+n(i.qty)));
+  return out;
+}
 function ownTotals(week=currentWeek()){
   let qty=0, value=0;
   Object.entries(week.ownProduction||{}).forEach(([pid,v])=>{ qty+=n(v.qty); value+=n(v.qty)*n(v.unitPrice ?? priceOf(product(pid)||{},'public')); });
@@ -554,7 +559,8 @@ function updateOwnTotal(){ let q=0,m=0; $$('.own-qty').forEach(inp=>{const qty=i
 function saveOwnProduction(){ if(!ensureOpenWeek()) return; const w=currentWeek(), obj={}; $$('.own-qty').forEach(inp=>{const qty=int(inp.value);if(qty)obj[inp.dataset.pid]={qty,unitPrice:n(inp.dataset.price)};}); w.ownProduction=obj; saveState(false); render(); showToast('Producción propia guardada'); }
 
 function renderPublic(){
-  const w=currentWeek(), stock=stockByProduct(w), st=salesTotals(w), rows=Object.entries(stock).filter(([,q])=>q>0).sort((a,b)=>(product(a[0])?.name||'').localeCompare(product(b[0])?.name||'')).map(([pid,q])=>{const p=product(pid);return `<div class="list-item"><div class="grow"><strong>${esc(p?.name||'Postre')}</strong><small>${money(priceOf(p||{},'public'))} c/u · ${qtyFmt(q)} disponibles</small></div><div class="amount">${qtyFmt(q)}</div><button class="btn small primary" onclick="openSaleModal('${pid}')">Vender</button></div>`;}).join('');
+  const w=currentWeek(), stock=stockByProduct(w), reserved=businessQtyByProduct(w), st=salesTotals(w), pids=[...new Set([...Object.keys(stock),...Object.keys(reserved)])];
+  const rows=pids.sort((a,b)=>(product(a)?.name||'').localeCompare(product(b)?.name||'')).map(pid=>{const p=product(pid),q=Math.max(0,n(stock[pid])),businessQty=n(reserved[pid]);return `<div class="list-item"><div class="grow"><strong>${esc(p?.name||'Postre')}</strong><small>${money(priceOf(p||{},'public'))} c/u</small><small><span class="badge ${q>0?'ok':'gray'}">${qtyFmt(q)} para vender</span>${businessQty?` <span class="badge warn">${qtyFmt(businessQty)} reservados</span>`:''}</small></div><button class="btn small primary" onclick="openSaleModal('${pid}')" ${q<1?'disabled':''}>${q>0?'Vender':'Sin stock'}</button></div>`;}).join('');
   const sales=w.publicSales.slice().reverse().map(s=>`<div class="list-item"><div class="grow"><strong>${esc(product(s.productId)?.name||'Postre')} × ${s.qty}</strong><small>${new Date(s.date).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} · ${money(s.unitPrice)} c/u</small></div><div class="amount">${money(s.qty*s.unitPrice)}</div><button class="icon-btn" onclick="deleteSale('${s.id}')">🗑</button></div>`).join('');
   return `${hero('Ventas','Vendé la producción propia y controlá el stock')}
     <div class="grid grid-2"><div class="card stat-card"><div><div class="eyebrow">Facturación real</div><div class="value">${money(st.money)}</div></div><div class="sub">${st.qty} postres vendidos</div></div><div class="card stat-card"><div><div class="eyebrow">Stock</div><div class="value">${Object.values(stock).reduce((s,q)=>s+Math.max(0,n(q)),0)}</div></div><div class="sub">postres disponibles</div></div></div>
@@ -567,8 +573,8 @@ function openSaleModal(selectedProductId=''){
   if(!options){showToast('No hay stock para vender');return;}
   modal('Registrar venta',`<div class="field"><label>Postre</label><select id="saleProduct" class="select" onchange="updateSaleProduct()">${options}</select></div><div id="saleStockText" class="note" style="margin-bottom:12px"></div><div class="form-row"><div class="field"><label>Cantidad vendida</label><input id="saleQty" class="input" type="number" min="1" step="1" value="1"></div><div class="field"><label>Precio unitario</label><input id="salePrice" class="input" type="number" min="0" step="100"></div></div><button class="btn primary wide" onclick="saveSale()">Confirmar venta</button>`); updateSaleProduct();
 }
-function updateSaleProduct(){const pid=$('#saleProduct')?.value,p=product(pid),stock=n(stockByProduct()[pid]);if(p&&$('#salePrice'))$('#salePrice').value=priceOf(p,'public');if($('#saleQty'))$('#saleQty').max=stock;if($('#saleStockText'))$('#saleStockText').textContent=`Tenés ${qtyFmt(stock)} disponibles. Después de guardar, se descuentan automáticamente.`;}
-function saveSale(){const w=currentWeek(), pid=$('#saleProduct').value, qty=int($('#saleQty').value), pr=n($('#salePrice').value), stock=n(stockByProduct(w)[pid]); if(qty<1)return showToast('Cantidad inválida'); if(qty>stock)return showToast(`Solo hay ${stock} en stock`); w.publicSales.push({id:uid('sale'),productId:pid,qty,unitPrice:pr,date:new Date().toISOString()}); saveState(false);closeModal();render();showToast(`${product(pid)?.name||'Postre'}: quedan ${qtyFmt(stock-qty)}`);}
+function updateSaleProduct(){const pid=$('#saleProduct')?.value,p=product(pid),stock=n(stockByProduct()[pid]),reserved=n(businessQtyByProduct()[pid]);if(p&&$('#salePrice'))$('#salePrice').value=priceOf(p,'public');if($('#saleQty'))$('#saleQty').max=stock;if($('#saleStockText'))$('#saleStockText').textContent=`Podés vender ${qtyFmt(stock)}. Hay ${qtyFmt(reserved)} reservados para negocios y no se tocan desde acá.`;}
+function saveSale(){const w=currentWeek(), pid=$('#saleProduct').value, qty=int($('#saleQty').value), pr=n($('#salePrice').value), stock=n(stockByProduct(w)[pid]); if(qty<1)return showToast('Cantidad inválida'); if(qty>stock)return showToast(`Solo podés vender ${stock}; lo de negocios está reservado`); w.publicSales.push({id:uid('sale'),productId:pid,qty,unitPrice:pr,date:new Date().toISOString()}); saveState(false);closeModal();render();showToast(`${product(pid)?.name||'Postre'}: quedan ${qtyFmt(stock-qty)} para vender`);}
 function deleteSale(id){if(!confirm('¿Eliminar esta venta?'))return;const w=currentWeek();w.publicSales=w.publicSales.filter(s=>s.id!==id);saveState(false);render();showToast('Venta eliminada');}
 
 function renderProductionMode(){
