@@ -419,7 +419,7 @@ function render(){
         ${navBtn('dashboard','⌂','Inicio')}
         ${navBtn('orders','🧾','Pedidos')}
         ${navBtn('production','🍮','Producción')}
-        ${navBtn('public','🛍️','Público')}
+        ${navBtn('public','🛍️','Ventas')}
         ${navBtn('more','⋯','Más')}
       </div></nav>
     </div>`;
@@ -457,9 +457,10 @@ function renderDashboard(){
     </div>
     <div class="section"><div class="section-title"><h3>Accesos rápidos</h3></div><div class="action-grid">
       ${action('🗓️','Nueva semana','Cerrar y empezar otra',"openNewWeekModal()")}
-      ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=10&vista=ganancias'",'profit')}
+      ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=11&vista=ganancias'",'profit')}
       ${action('🧾','Nuevo pedido','Cargar un negocio',"openOrderModal()")}
       ${action('🍓','Producción propia','Lo que venden ustedes',"go('own')")}
+      ${action('🛍️','Ventas','Stock y ventas al público',"go('public')")}
       ${action('📋','Lista de producción','Suma negocios + público',"go('production')")}
       ${action('✅','Modo producción','Marcar lo terminado',"go('productionMode')")}
       ${action('🛒','Ingredientes','Qué necesitás preparar',"go('shopping')")}
@@ -553,21 +554,21 @@ function updateOwnTotal(){ let q=0,m=0; $$('.own-qty').forEach(inp=>{const qty=i
 function saveOwnProduction(){ if(!ensureOpenWeek()) return; const w=currentWeek(), obj={}; $$('.own-qty').forEach(inp=>{const qty=int(inp.value);if(qty)obj[inp.dataset.pid]={qty,unitPrice:n(inp.dataset.price)};}); w.ownProduction=obj; saveState(false); render(); showToast('Producción propia guardada'); }
 
 function renderPublic(){
-  const w=currentWeek(), stock=stockByProduct(w), st=salesTotals(w), rows=Object.entries(stock).filter(([,q])=>q>0).sort((a,b)=>(product(a[0])?.name||'').localeCompare(product(b[0])?.name||'')).map(([pid,q])=>`<div class="list-item"><div class="grow"><strong>${esc(product(pid)?.name||'Postre')}</strong><small>Disponible para vender</small></div><div class="amount">${qtyFmt(q)}</div></div>`).join('');
-  const sales=w.publicSales.slice().reverse().map(s=>`<div class="list-item"><div class="grow"><strong>${esc(product(s.productId)?.name||'Postre')} × ${s.qty}</strong><small>${new Date(s.date).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}</small></div><div class="amount">${money(s.qty*s.unitPrice)}</div><button class="icon-btn" onclick="deleteSale('${s.id}')">🗑</button></div>`).join('');
-  return `${hero('Venta al público','Registrá lo que realmente vendieron')}
+  const w=currentWeek(), stock=stockByProduct(w), st=salesTotals(w), rows=Object.entries(stock).filter(([,q])=>q>0).sort((a,b)=>(product(a[0])?.name||'').localeCompare(product(b[0])?.name||'')).map(([pid,q])=>{const p=product(pid);return `<div class="list-item"><div class="grow"><strong>${esc(p?.name||'Postre')}</strong><small>${money(priceOf(p||{},'public'))} c/u · ${qtyFmt(q)} disponibles</small></div><div class="amount">${qtyFmt(q)}</div><button class="btn small primary" onclick="openSaleModal('${pid}')">Vender</button></div>`;}).join('');
+  const sales=w.publicSales.slice().reverse().map(s=>`<div class="list-item"><div class="grow"><strong>${esc(product(s.productId)?.name||'Postre')} × ${s.qty}</strong><small>${new Date(s.date).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} · ${money(s.unitPrice)} c/u</small></div><div class="amount">${money(s.qty*s.unitPrice)}</div><button class="icon-btn" onclick="deleteSale('${s.id}')">🗑</button></div>`).join('');
+  return `${hero('Ventas','Vendé la producción propia y controlá el stock')}
     <div class="grid grid-2"><div class="card stat-card"><div><div class="eyebrow">Facturación real</div><div class="value">${money(st.money)}</div></div><div class="sub">${st.qty} postres vendidos</div></div><div class="card stat-card"><div><div class="eyebrow">Stock</div><div class="value">${Object.values(stock).reduce((s,q)=>s+Math.max(0,n(q)),0)}</div></div><div class="sub">postres disponibles</div></div></div>
-    <div class="section"><div class="section-title"><h3>Stock actual</h3><button class="btn small primary" onclick="openSaleModal()">+ Venta</button></div><div class="list">${rows||'<div class="empty">No hay stock disponible.</div>'}</div></div>
+    <div class="section"><div class="section-title"><h3>Disponibles para vender</h3><button class="btn small ghost" onclick="go('own')">+ Producción propia</button></div><div class="list">${rows||'<div class="empty"><strong>No hay stock disponible</strong><div>Cargá primero los postres en Producción propia.</div><button class="btn small primary section" onclick="go(\'own\')">Cargar producción</button></div>'}</div></div>
     <div class="section"><div class="section-title"><h3>Ventas registradas</h3></div><div class="list">${sales||'<div class="empty">Todavía no registraste ventas.</div>'}</div></div>`;
 }
-function openSaleModal(){
+function openSaleModal(selectedProductId=''){
   if(!ensureOpenWeek()) return;
-  const stock=stockByProduct(), options=Object.entries(stock).filter(([,q])=>q>0).map(([pid,q])=>`<option value="${pid}">${esc(product(pid)?.name||'Postre')} · stock ${qtyFmt(q)}</option>`).join('');
+  const stock=stockByProduct(), options=Object.entries(stock).filter(([,q])=>q>0).sort((a,b)=>(product(a[0])?.name||'').localeCompare(product(b[0])?.name||'')).map(([pid,q])=>`<option value="${pid}" ${pid===selectedProductId?'selected':''}>${esc(product(pid)?.name||'Postre')} · stock ${qtyFmt(q)}</option>`).join('');
   if(!options){showToast('No hay stock para vender');return;}
-  modal('Registrar venta',`<div class="field"><label>Postre</label><select id="saleProduct" class="select" onchange="updateSalePrice()">${options}</select></div><div class="form-row"><div class="field"><label>Cantidad</label><input id="saleQty" class="input" type="number" min="1" step="1" value="1"></div><div class="field"><label>Precio unitario</label><input id="salePrice" class="input" type="number" min="0" step="100"></div></div><button class="btn primary wide" onclick="saveSale()">Guardar venta</button>`); updateSalePrice();
+  modal('Registrar venta',`<div class="field"><label>Postre</label><select id="saleProduct" class="select" onchange="updateSaleProduct()">${options}</select></div><div id="saleStockText" class="note" style="margin-bottom:12px"></div><div class="form-row"><div class="field"><label>Cantidad vendida</label><input id="saleQty" class="input" type="number" min="1" step="1" value="1"></div><div class="field"><label>Precio unitario</label><input id="salePrice" class="input" type="number" min="0" step="100"></div></div><button class="btn primary wide" onclick="saveSale()">Confirmar venta</button>`); updateSaleProduct();
 }
-function updateSalePrice(){const p=product($('#saleProduct')?.value);if(p&&$('#salePrice'))$('#salePrice').value=priceOf(p,'public');}
-function saveSale(){const w=currentWeek(), pid=$('#saleProduct').value, qty=int($('#saleQty').value), pr=n($('#salePrice').value), stock=n(stockByProduct(w)[pid]); if(qty<1)return showToast('Cantidad inválida'); if(qty>stock)return showToast(`Solo hay ${stock} en stock`); w.publicSales.push({id:uid('sale'),productId:pid,qty,unitPrice:pr,date:new Date().toISOString()}); saveState(false);closeModal();render();showToast('Venta registrada');}
+function updateSaleProduct(){const pid=$('#saleProduct')?.value,p=product(pid),stock=n(stockByProduct()[pid]);if(p&&$('#salePrice'))$('#salePrice').value=priceOf(p,'public');if($('#saleQty'))$('#saleQty').max=stock;if($('#saleStockText'))$('#saleStockText').textContent=`Tenés ${qtyFmt(stock)} disponibles. Después de guardar, se descuentan automáticamente.`;}
+function saveSale(){const w=currentWeek(), pid=$('#saleProduct').value, qty=int($('#saleQty').value), pr=n($('#salePrice').value), stock=n(stockByProduct(w)[pid]); if(qty<1)return showToast('Cantidad inválida'); if(qty>stock)return showToast(`Solo hay ${stock} en stock`); w.publicSales.push({id:uid('sale'),productId:pid,qty,unitPrice:pr,date:new Date().toISOString()}); saveState(false);closeModal();render();showToast(`${product(pid)?.name||'Postre'}: quedan ${qtyFmt(stock-qty)}`);}
 function deleteSale(id){if(!confirm('¿Eliminar esta venta?'))return;const w=currentWeek();w.publicSales=w.publicSales.filter(s=>s.id!==id);saveState(false);render();showToast('Venta eliminada');}
 
 function renderProductionMode(){
@@ -661,7 +662,7 @@ function weekShouldClose(w){
   const inicio=new Date(`${w.startDate}T12:00:00`),hoy=new Date();
   return Number.isFinite(inicio.getTime())&&Math.floor((hoy-inicio)/86400000)>=6;
 }
-function openWeekClose(id){window.location.href='Costos.html?v=10&cerrar='+encodeURIComponent(id);}
+function openWeekClose(id){window.location.href='Costos.html?v=11&cerrar='+encodeURIComponent(id);}
 function openNewWeekModal(){
   const activa=currentWeek();
   if(activa?.status==='open'&&weekHasActivity(activa)&&!weekHasCostClose(activa.id)){
@@ -702,7 +703,7 @@ function resetApp(){if(!confirm('¿Restablecer toda la app? Esto elimina los dat
 function renderMore(){
   const w=currentWeek(),avisoCierre=weekShouldClose(w)?`<div class="note" style="margin-bottom:12px"><strong>Semana pendiente de finalizar</strong><br>Completá el cierre para guardar la ganancia correcta.<button class="btn primary wide" style="margin-top:10px" onclick="openWeekClose('${w.id}')">Finalizar semana</button></div>`:'';
   return `${hero('Más','Administración de la app')}${avisoCierre}<div class="action-grid">
-    ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=10&vista=ganancias'",'profit')}
+    ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=11&vista=ganancias'",'profit')}
     ${action('🏪','Negocios','Agregar o editar clientes',"go('businesses')")}
     ${action('🍰','Postres y recetas','Variedades y cantidades',"go('products')")}
     ${action('🥛','Ingredientes','Precio, envase y unidad',"go('ingredients')")}
