@@ -347,6 +347,14 @@ function orderMoney(order){ return order.items.reduce((s,i)=>s+n(i.qty)*n(i.unit
 function businessTotals(week=currentWeek()){
   return {qty:week.orders.reduce((s,o)=>s+orderQtyTotal(o),0), money:week.orders.reduce((s,o)=>s+orderMoney(o),0)};
 }
+function orderPaymentMethod(order){ return ['cash','transfer'].includes(order?.paymentMethod) ? order.paymentMethod : 'pending'; }
+function paymentLabel(method){ return method==='cash'?'Efectivo':method==='transfer'?'Transferencia':'Pendiente'; }
+function paymentBadgeClass(method){ return method==='cash'?'ok':method==='transfer'?'warn':'gray'; }
+function businessPaymentTotals(week=currentWeek()){
+  const out={cash:0,transfer:0,pending:0};
+  week.orders.forEach(o=>out[orderPaymentMethod(o)]+=orderMoney(o));
+  return out;
+}
 function businessQtyByProduct(week=currentWeek()){
   const out={};
   week.orders.forEach(o=>o.items.forEach(i=>out[i.productId]=(out[i.productId]||0)+n(i.qty)));
@@ -480,12 +488,13 @@ function renderDashboard(){
 function action(ico,title,sub,on,extra=''){ return `<button class="action-card ${extra}" onclick="${on}"><div class="ico">${ico}</div><strong>${esc(title)}</strong><small>${esc(sub)}</small></button>`; }
 
 function renderOrders(){
-  const w=currentWeek(), bt=businessTotals(w);
+  const w=currentWeek(), bt=businessTotals(w), payments=businessPaymentTotals(w);
   const rows=w.orders.length ? w.orders.map(o=>{
-    const b=business(o.businessId); return `<div class="list-item clickable" onclick="showOrder('${o.id}')"><div class="grow"><strong>${esc(b?.name||'Negocio')}</strong><small>${orderQtyTotal(o)} postres</small></div><div class="amount">${money(orderMoney(o))}</div><span>›</span></div>`;
+    const b=business(o.businessId),method=orderPaymentMethod(o); return `<div class="list-item clickable" onclick="showOrder('${o.id}')"><div class="grow"><strong>${esc(b?.name||'Negocio')}</strong><small>${orderQtyTotal(o)} postres · <span class="badge ${paymentBadgeClass(method)}">${paymentLabel(method)}</span></small></div><div class="amount">${money(orderMoney(o))}</div><span>›</span></div>`;
   }).join('') : `<div class="empty"><div class="icon">🧾</div><strong>Todavía no cargaste pedidos</strong><div>Agregá el primer negocio de esta semana.</div></div>`;
   return `${hero('Pedidos','Pedidos de negocios de la semana')}
     <div class="total-box"><div class="label">Total a cobrar</div><div class="big">${money(bt.money)}</div><div class="meta">${bt.qty} postres · ${w.orders.length} negocios</div></div>
+    <div class="section card"><div class="money-line"><span>💵 Cobrado en efectivo</span><strong>${money(payments.cash)}</strong></div><div class="money-line"><span>📲 Cobrado por transferencia</span><strong>${money(payments.transfer)}</strong></div><div class="divider"></div><div class="money-line"><span>⏳ Pendiente de cobro</span><strong>${money(payments.pending)}</strong></div></div>
     <div class="section"><div class="section-title"><h3>Negocios</h3><button class="btn small ghost" onclick="openOrderModal()">+ Pedido</button></div><div class="list">${rows}</div></div>
     <button class="fab" onclick="openOrderModal()">＋ Nuevo pedido</button>`;
 }
@@ -520,16 +529,17 @@ function saveOrder(orderId=''){
   if(!items.length){ showToast('Cargá al menos un postre'); return; }
   let order=orderId?w.orders.find(o=>o.id===orderId):w.orders.find(o=>o.businessId===businessId);
   if(order){ order.businessId=businessId; order.items=items; order.updatedAt=new Date().toISOString(); }
-  else w.orders.push({id:uid('order'),businessId,items,createdAt:new Date().toISOString()});
+  else w.orders.push({id:uid('order'),businessId,items,paymentMethod:'pending',createdAt:new Date().toISOString()});
   saveState(false); closeModal(); render(); showToast('Pedido guardado');
 }
 function showOrder(orderId){
   const w=currentWeek(), o=w.orders.find(x=>x.id===orderId); if(!o)return; const b=business(o.businessId);
-  const rows=o.items.map(i=>`<div class="money-line"><span>${i.qty} × ${esc(product(i.productId)?.name||'Postre')} · ${money(i.unitPrice)}</span><strong>${money(i.qty*i.unitPrice)}</strong></div>`).join('');
-  modal(b?.name||'Pedido',`${rows}<div class="divider"></div><div class="total-box"><div class="label">Total a cobrar</div><div class="big">${money(orderMoney(o))}</div><div class="meta">${orderQtyTotal(o)} postres</div></div><div class="grid grid-2 section"><button class="btn ghost" onclick="copyOrderSummary('${o.id}')">📋 Copiar resumen</button><button class="btn ghost" onclick="closeModal();openOrderModal('${o.id}')">✏️ Editar</button><button class="btn ghost" onclick="duplicateOrder('${o.id}')">⧉ Duplicar</button><button class="btn danger" onclick="deleteOrder('${o.id}')">Eliminar</button></div>`);
+  const rows=o.items.map(i=>`<div class="money-line"><span>${i.qty} × ${esc(product(i.productId)?.name||'Postre')} · ${money(i.unitPrice)}</span><strong>${money(i.qty*i.unitPrice)}</strong></div>`).join(''),method=orderPaymentMethod(o);
+  modal(b?.name||'Pedido',`${rows}<div class="divider"></div><div class="total-box"><div class="label">Total a cobrar</div><div class="big">${money(orderMoney(o))}</div><div class="meta">${orderQtyTotal(o)} postres</div></div><div class="section"><div class="section-title"><h3>Forma de pago</h3><span class="badge ${paymentBadgeClass(method)}">${paymentLabel(method)}</span></div><div class="grid grid-2"><button class="btn ${method==='cash'?'ok':'ghost'}" onclick="setOrderPayment('${o.id}','cash')">💵 Efectivo</button><button class="btn ${method==='transfer'?'ok':'ghost'}" onclick="setOrderPayment('${o.id}','transfer')">📲 Transferencia</button></div>${method!=='pending'?`<button class="btn ghost wide section" onclick="setOrderPayment('${o.id}','pending')">Marcar como pendiente</button>`:''}</div><div class="grid grid-2 section"><button class="btn ghost" onclick="copyOrderSummary('${o.id}')">📋 Copiar resumen</button><button class="btn ghost" onclick="closeModal();openOrderModal('${o.id}')">✏️ Editar</button><button class="btn ghost" onclick="duplicateOrder('${o.id}')">⧉ Duplicar</button><button class="btn danger" onclick="deleteOrder('${o.id}')">Eliminar</button></div>`);
 }
+function setOrderPayment(orderId,method){const o=currentWeek().orders.find(x=>x.id===orderId);if(!o)return;o.paymentMethod=['cash','transfer'].includes(method)?method:'pending';o.paidAt=o.paymentMethod==='pending'?null:new Date().toISOString();saveState(false);closeModal();render();showToast(o.paymentMethod==='pending'?'Pago marcado como pendiente':`Cobrado en ${paymentLabel(o.paymentMethod).toLowerCase()}`);}
 function copyOrderSummary(id){ const o=currentWeek().orders.find(x=>x.id===id); if(!o)return; const b=business(o.businessId); const lines=[`Pedido ${b?.name||''}`,'',...o.items.map(i=>`${i.qty} ${product(i.productId)?.name||'Postres'}`),'',`Total: ${orderQtyTotal(o)} postres`,`Total a pagar: ${money(orderMoney(o))}`]; copyText(lines.join('\n')); }
-function duplicateOrder(id){ const w=currentWeek(), o=w.orders.find(x=>x.id===id); if(!o)return; w.orders.push({...JSON.parse(JSON.stringify(o)),id:uid('order'),createdAt:new Date().toISOString()}); saveState(false); closeModal(); render(); showToast('Pedido duplicado'); }
+function duplicateOrder(id){ const w=currentWeek(), o=w.orders.find(x=>x.id===id); if(!o)return; w.orders.push({...JSON.parse(JSON.stringify(o)),id:uid('order'),paymentMethod:'pending',paidAt:null,createdAt:new Date().toISOString()}); saveState(false); closeModal(); render(); showToast('Pedido duplicado'); }
 function deleteOrder(id){ if(!confirm('¿Eliminar este pedido?'))return; const w=currentWeek(); w.orders=w.orders.filter(o=>o.id!==id); saveState(false); closeModal(); render(); showToast('Pedido eliminado'); }
 
 function renderProduction(){
@@ -651,7 +661,7 @@ function renderHistory(){
   const rows=state.weeks.slice().sort((a,b)=>b.startDate.localeCompare(a.startDate)).map(w=>{const bt=businessTotals(w),st=salesTotals(w),prod=productionByProduct(w),q=Object.values(prod).reduce((a,b)=>a+n(b),0);return `<div class="list-item clickable" onclick="showWeekSummary('${w.id}')"><div class="grow"><strong>${esc(w.label)}</strong><small>${w.status==='open'?'Activa':'Cerrada'} · ${q} producidos · ${money(bt.money+st.money)} facturación real</small></div><span class="badge ${w.status==='open'?'ok':'gray'}">${w.status==='open'?'ACTIVA':'CERRADA'}</span><span>›</span></div>`;}).join('');
   return `${hero('Historial','Semanas y tandas anteriores')}<div class="toolbar"><button class="btn primary" onclick="openNewWeekModal()">＋ Nueva semana</button>${currentWeek()?.status==='open'?'<button class="btn ghost" onclick="closeCurrentWeek()">Finalizar semana</button>':''}</div><div class="list">${rows}</div>`;
 }
-function showWeekSummary(id){const w=state.weeks.find(x=>x.id===id);if(!w)return;const bt=businessTotals(w),ot=ownTotals(w),st=salesTotals(w),prod=productionByProduct(w),pq=Object.values(prod).reduce((a,b)=>a+n(b),0);const orders=w.orders.map(o=>`<div class="money-line"><span>${esc(business(o.businessId)?.name||'Negocio')} · ${orderQtyTotal(o)} postres</span><strong>${money(orderMoney(o))}</strong></div>`).join('');modal(w.label,`${orders||'<div class="empty">Sin pedidos de negocios.</div>'}<div class="divider"></div><div class="money-line"><span>Producción propia</span><strong>${ot.qty}</strong></div><div class="money-line"><span>Ventas al público</span><strong>${money(st.money)}</strong></div><div class="money-line"><span>Producción total</span><strong>${pq}</strong></div><div class="total-box section"><div class="label">Facturación real</div><div class="big">${money(bt.money+st.money)}</div></div>`);}
+function showWeekSummary(id){const w=state.weeks.find(x=>x.id===id);if(!w)return;const bt=businessTotals(w),ot=ownTotals(w),st=salesTotals(w),prod=productionByProduct(w),pq=Object.values(prod).reduce((a,b)=>a+n(b),0),payments=businessPaymentTotals(w);const orders=w.orders.map(o=>{const method=orderPaymentMethod(o);return `<div class="money-line"><span>${esc(business(o.businessId)?.name||'Negocio')} · ${orderQtyTotal(o)} postres · <span class="badge ${paymentBadgeClass(method)}">${paymentLabel(method)}</span></span><strong>${money(orderMoney(o))}</strong></div>`;}).join('');modal(w.label,`${orders||'<div class="empty">Sin pedidos de negocios.</div>'}<div class="divider"></div><div class="money-line"><span>Efectivo de negocios</span><strong>${money(payments.cash)}</strong></div><div class="money-line"><span>Transferencias de negocios</span><strong>${money(payments.transfer)}</strong></div><div class="money-line"><span>Pendiente de negocios</span><strong>${money(payments.pending)}</strong></div><div class="divider"></div><div class="money-line"><span>Producción propia</span><strong>${ot.qty}</strong></div><div class="money-line"><span>Ventas al público</span><strong>${money(st.money)}</strong></div><div class="money-line"><span>Producción total</span><strong>${pq}</strong></div><div class="total-box section"><div class="label">Facturación real</div><div class="big">${money(bt.money+st.money)}</div></div>`);}
 function weekHasActivity(w){
   if(!w)return false;
   const pedidos=(w.orders||[]).some(o=>(o.items||[]).some(item=>n(item.qty)>0));
