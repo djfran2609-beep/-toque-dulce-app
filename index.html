@@ -212,6 +212,7 @@ button:disabled { opacity: .5; cursor: default; }
 const STORAGE_KEY = 'toque_dulce_pwa_v1';
 let state;
 let currentView = 'dashboard';
+let purchaseTab = 'purchases';
 let toastTimer;
 
 const $ = (sel, root=document) => root.querySelector(sel);
@@ -317,6 +318,8 @@ function seedState(){
     ingredients,
     products,
     businesses:[],
+    purchases:[],
+    purchaseStock:[],
     weeks:[{id:weekId,label:weekLabel(),startDate:todayISO(),status:'open',orders:[],ownProduction:{},publicSales:[],publicOrders:[],productionStatus:{}}],
     currentWeekId:weekId
   };
@@ -331,6 +334,8 @@ function loadState(){
     console.warn(e);
     state = seedState();
   }
+  if(!Array.isArray(state.purchases)) state.purchases=[];
+  if(!Array.isArray(state.purchaseStock)) state.purchaseStock=[];
   dedupeStateIngredients();
   saveState(false);
 }
@@ -437,7 +442,7 @@ function render(){
       </div></nav>
     </div>`;
 }
-function navBtn(view,ico,label){ const active=currentView===view||(view==='public'&&currentView==='publicOrders');return `<button class="nav-btn ${active?'active':''}" onclick="go('${view}')"><span>${ico}</span>${label}</button>`; }
+function navBtn(view,ico,label){ const active=currentView===view||(view==='public'&&currentView==='publicOrders')||(view==='more'&&currentView==='purchases');return `<button class="nav-btn ${active?'active':''}" onclick="go('${view}')"><span>${ico}</span>${label}</button>`; }
 function hero(title,sub='',right=''){ return `<div class="hero"><div><h2>${title}</h2>${sub?`<p>${sub}</p>`:''}</div>${right}</div>`; }
 
 function renderView(){
@@ -454,6 +459,7 @@ function renderView(){
     case 'settings': return renderSettings();
     case 'productionMode': return renderProductionMode();
     case 'shopping': return renderShopping();
+    case 'purchases': return renderPurchases();
     case 'more': return renderMore();
     default: return renderDashboard();
   }
@@ -479,6 +485,7 @@ function renderDashboard(){
       ${action('📋','Lista de producción','Suma negocios + público',"go('production')")}
       ${action('✅','Modo producción','Marcar lo terminado',"go('productionMode')")}
       ${action('🛒','Ingredientes','Qué necesitás preparar',"go('shopping')")}
+      ${action('🧺','Compras y stock','Gastos y mercadería guardada',"go('purchases')")}
       ${action('🏪','Negocios','Clientes y datos',"go('businesses')")}
       ${action('🍰','Postres','Precios y recetas',"go('products')")}
       ${action('📚','Historial','Semanas anteriores',"go('history')")}
@@ -703,6 +710,93 @@ function renderShopping(){
 }
 function copyShoppingList(){const totals=ingredientsNeeded(), lines=['Lista de producción · Toque Dulce',''];Object.entries(totals).filter(([,q])=>q>0).sort((a,b)=>(ingredient(a[0])?.name||'').localeCompare(ingredient(b[0])?.name||'')).forEach(([iid,q])=>{const ing=ingredient(iid);lines.push(`• ${ing?.name||'Ingrediente'}: ${smartQty(q,baseUnit(ing?.unit||'unit'))}`);});copyText(lines.join('\n'));}
 
+function ensurePurchaseData(){
+  if(!Array.isArray(state.purchases))state.purchases=[];
+  if(!Array.isArray(state.purchaseStock))state.purchaseStock=[];
+}
+function purchasesOfState(){ensurePurchaseData();return state.purchases;}
+function purchaseStockOfState(){ensurePurchaseData();return state.purchaseStock;}
+function purchaseRecord(id){return purchasesOfState().find(p=>p.id===id);}
+function purchaseStockRecord(id){return purchaseStockOfState().find(s=>s.id===id);}
+function purchaseUnitOptions(selected='unit'){
+  return [['unit','unidades'],['package','paquetes'],['pot','potes'],['kg','kilogramos'],['g','gramos'],['l','litros'],['ml','mililitros']].map(([value,label])=>`<option value="${value}" ${selected===value?'selected':''}>${label}</option>`).join('');
+}
+function purchaseUnitText(unit,qty=0){
+  const singular={unit:'unidad',package:'paquete',pot:'pote',kg:'kg',g:'g',l:'litro',ml:'ml'},plural={unit:'unidades',package:'paquetes',pot:'potes',kg:'kg',g:'g',l:'litros',ml:'ml'};
+  return n(qty)===1?(singular[unit]||unit||'unidad'):(plural[unit]||unit||'unidades');
+}
+function purchaseQtyText(row){return `${qtyFmt(row?.quantity)} ${purchaseUnitText(row?.unit,n(row?.quantity))}`;}
+function purchaseDateLabel(date){
+  if(!date)return 'Sin fecha';
+  const d=new Date(`${String(date).slice(0,10)}T12:00:00`);
+  return Number.isNaN(d.getTime())?String(date):new Intl.DateTimeFormat('es-AR',{day:'2-digit',month:'2-digit',year:'numeric'}).format(d);
+}
+function setPurchaseTab(tab){purchaseTab=tab==='stock'?'stock':'purchases';render();}
+function purchaseListRows(rows){
+  return rows.map(p=>`<div class="list-item clickable" onclick="showPurchase('${p.id}')"><div class="grow"><strong>${esc(p.itemName||'Compra')}</strong><small>${purchaseDateLabel(p.date)} · ${purchaseQtyText(p)} · <span class="badge ${paymentBadgeClass(p.paymentMethod)}">${paymentLabel(p.paymentMethod)}</span></small>${p.note?`<small>${esc(p.note)}</small>`:''}</div><div class="amount">${money(p.amount)}</div><span>›</span></div>`).join('');
+}
+function renderPurchases(){
+  ensurePurchaseData();
+  const w=currentWeek(),all=[...state.purchases].sort((a,b)=>String(b.date||b.createdAt||'').localeCompare(String(a.date||a.createdAt||''))),current=all.filter(p=>p.weekId===w?.id),previous=all.filter(p=>p.weekId!==w?.id),weekTotal=current.reduce((s,p)=>s+n(p.amount),0),cash=current.filter(p=>p.paymentMethod==='cash').reduce((s,p)=>s+n(p.amount),0),transfer=current.filter(p=>p.paymentMethod==='transfer').reduce((s,p)=>s+n(p.amount),0),stock=[...state.purchaseStock].sort((a,b)=>(a.itemName||'').localeCompare(b.itemName||'','es',{sensitivity:'base'})),valuedStock=stock.filter(row=>row.estimatedValue!=null),stockValue=valuedStock.reduce((s,row)=>s+n(row.estimatedValue),0);
+  const tabs=`<div class="segmented" style="width:100%;margin-top:14px"><button class="${purchaseTab==='purchases'?'active':''}" onclick="setPurchaseTab('purchases')">COMPRAS</button><button class="${purchaseTab==='stock'?'active':''}" onclick="setPurchaseTab('stock')">LO QUE QUEDÓ</button></div>`;
+  const stockMeta=!stock.length?'Todavía no cargaste sobrantes':valuedStock.length===stock.length?`Valor aproximado · ${stock.length} ${stock.length===1?'ingrediente':'ingredientes'}`:`Valor cargado en ${valuedStock.length} de ${stock.length} ingredientes`;
+  const header=`${hero('Compras y stock','Control de la plata que salió y la mercadería guardada')}<div class="note"><strong>Registro independiente.</strong> Nada de esta pantalla modifica las ganancias, las recetas, el stock de postres ni el cierre semanal.</div><div class="grid grid-2 section"><div class="card stat-card"><div><div class="eyebrow">Compras esta semana</div><div class="value">${money(weekTotal)}</div></div><div class="sub">Efectivo ${money(cash)} · Transferencia ${money(transfer)}</div></div><div class="card stat-card"><div><div class="eyebrow">Mercadería guardada</div><div class="value">${valuedStock.length?money(stockValue):'—'}</div></div><div class="sub">${stockMeta}</div></div></div>${tabs}`;
+  if(purchaseTab==='stock'){
+    const rows=stock.map(row=>`<div class="list-item clickable" onclick="openStockModal('${row.id}')"><div class="grow"><strong>${esc(row.itemName||'Ingrediente')}</strong><small>${purchaseQtyText(row)} disponibles · actualizado ${purchaseDateLabel(String(row.updatedAt||'').slice(0,10))}</small></div><div class="amount">${row.estimatedValue==null?'—':money(row.estimatedValue)}</div><span>›</span></div>`).join('');
+    return `${header}<div class="section"><div class="section-title"><h3>Stock para la próxima producción</h3><button class="btn small ghost" onclick="openStockModal()">+ Ingrediente</button></div><div class="note" style="margin-bottom:10px">Anotá solamente los ingredientes importantes. Cargá la cantidad total que tenés ahora; este stock sigue disponible cuando empieces otra semana.</div><div class="list">${rows||'<div class="empty"><div class="icon">📦</div><strong>Todavía no cargaste sobrantes</strong><div>Después de producir, anotá lo importante que te quedó.</div></div>'}</div></div><button class="fab" onclick="openStockModal()">＋ Sobrante</button>`;
+  }
+  return `${header}<div class="section"><div class="section-title"><h3>Compras de esta semana</h3><button class="btn small ghost" onclick="openPurchaseModal()">+ Compra</button></div><div class="list">${purchaseListRows(current)||'<div class="empty"><div class="icon">🧺</div><strong>No hay compras esta semana</strong><div>Anotá la primera cuando compres ingredientes.</div></div>'}</div></div>${previous.length?`<div class="section"><div class="section-title"><h3>Compras anteriores</h3><small>${previous.length} registros</small></div><div class="list">${purchaseListRows(previous)}</div></div>`:''}<button class="fab" onclick="openPurchaseModal()">＋ Compra</button>`;
+}
+function purchaseNameOptions(){
+  const names=[...state.ingredients.map(i=>i.name),...purchasesOfState().map(p=>p.itemName),...purchaseStockOfState().map(s=>s.itemName)].filter(Boolean),unique=[...new Map(names.map(name=>[nameKey(name),name])).values()].sort((a,b)=>a.localeCompare(b,'es',{sensitivity:'base'}));
+  return unique.map(name=>`<option value="${esc(name)}"></option>`).join('');
+}
+function openPurchaseModal(id=''){
+  const p=id?purchaseRecord(id):null;
+  modal(p?'Editar compra':'Nueva compra',`<div class="field"><label>Qué compraste *</label><input id="purchaseName" class="input" list="purchaseNames" autocomplete="off" value="${esc(p?.itemName||'')}" placeholder="Ej: Dulce de leche"><datalist id="purchaseNames">${purchaseNameOptions()}</datalist></div><div class="form-row"><div class="field"><label>Fecha</label><input id="purchaseDate" class="input" type="date" value="${p?.date||todayISO()}"></div><div class="field"><label>Total pagado</label><input id="purchaseAmount" class="input" type="number" min="0" step="100" inputmode="numeric" value="${p?.amount??''}" placeholder="$ 0"></div></div><div class="form-row"><div class="field"><label>Cantidad comprada</label><input id="purchaseQty" class="input" type="number" min="0.01" step="0.01" inputmode="decimal" value="${p?.quantity??1}"></div><div class="field"><label>Unidad</label><select id="purchaseUnit" class="select">${purchaseUnitOptions(p?.unit||'unit')}</select></div></div><div class="field"><label>Cómo pagaste</label><select id="purchasePayment" class="select"><option value="cash" ${p?.paymentMethod!=='transfer'?'selected':''}>Efectivo</option><option value="transfer" ${p?.paymentMethod==='transfer'?'selected':''}>Transferencia</option></select></div><div class="field"><label>Nota (opcional)</label><textarea id="purchaseNote" class="textarea" placeholder="Marca, comercio o cualquier detalle">${esc(p?.note||'')}</textarea></div><div class="note" style="margin-bottom:12px">Esta compra no cambia ningún costo ni ganancia de la aplicación.</div><div class="grid grid-2"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="savePurchase('${id}')">Guardar compra</button></div>`);
+}
+function savePurchase(id=''){
+  ensurePurchaseData();
+  const itemName=$('#purchaseName').value.trim(),quantity=n($('#purchaseQty').value),amount=n($('#purchaseAmount').value),date=$('#purchaseDate').value||todayISO();
+  if(!itemName)return showToast('Escribí qué compraste');
+  if(quantity<=0)return showToast('Cargá una cantidad válida');
+  if(amount<=0)return showToast('Cargá cuánto pagaste');
+  const data={itemName,quantity,unit:$('#purchaseUnit').value,amount,paymentMethod:$('#purchasePayment').value==='transfer'?'transfer':'cash',date,note:$('#purchaseNote').value.trim(),updatedAt:new Date().toISOString()};
+  const existing=id?purchaseRecord(id):null;
+  if(existing)Object.assign(existing,data);else state.purchases.push({id:uid('purchase'),weekId:currentWeek()?.id||null,createdAt:new Date().toISOString(),...data});
+  saveState(false);closeModal();purchaseTab='purchases';currentView='purchases';render();showToast(existing?'Compra actualizada':'Compra guardada');
+}
+function showPurchase(id){
+  const p=purchaseRecord(id);if(!p)return;
+  modal(p.itemName||'Compra',`<div class="money-line"><span>Fecha</span><strong>${purchaseDateLabel(p.date)}</strong></div><div class="money-line"><span>Cantidad</span><strong>${purchaseQtyText(p)}</strong></div><div class="money-line"><span>Forma de pago</span><strong>${paymentLabel(p.paymentMethod)}</strong></div>${p.note?`<div class="note section">${esc(p.note)}</div>`:''}<div class="total-box section"><div class="label">Total pagado</div><div class="big">${money(p.amount)}</div></div><div class="note section">Si te quedó parte de esta compra, podés usarla como referencia para anotar el sobrante.</div><div class="section"><button class="btn primary wide" onclick="openStockFromPurchase('${p.id}')">📦 Anotar lo que quedó</button></div><div class="grid grid-2 section"><button class="btn ghost" onclick="openPurchaseModal('${p.id}')">✏️ Editar</button><button class="btn danger" onclick="deletePurchase('${p.id}')">Eliminar</button></div>`);
+}
+function deletePurchase(id){
+  if(!confirm('¿Eliminar esta compra? El stock de sobrantes no se modificará.'))return;
+  state.purchases=purchasesOfState().filter(p=>p.id!==id);saveState(false);closeModal();render();showToast('Compra eliminada');
+}
+function openStockFromPurchase(purchaseId){closeModal();openStockModal('',purchaseId);}
+function suggestStockValue(input){const unitCost=n(input.dataset.unitCost);if(unitCost>0&&$('#stockValue'))$('#stockValue').value=Math.round(n(input.value)*unitCost);}
+function openStockModal(id='',purchaseId=''){
+  const row=id?purchaseStockRecord(id):null,p=purchaseId?purchaseRecord(purchaseId):null,quantity=row?.quantity??p?.quantity??1,estimated=row?.estimatedValue??p?.amount??'',unitCost=row&&n(row.quantity)>0&&row.estimatedValue!=null?n(row.estimatedValue)/n(row.quantity):p&&n(p.quantity)>0?n(p.amount)/n(p.quantity):0;
+  modal(row?'Actualizar sobrante':'Anotar sobrante',`<div class="field"><label>Ingrediente *</label><input id="stockName" class="input" list="stockNames" autocomplete="off" value="${esc(row?.itemName||p?.itemName||'')}" placeholder="Ej: Dulce de leche"><datalist id="stockNames">${purchaseNameOptions()}</datalist></div><div class="form-row"><div class="field"><label>Cantidad total que tenés</label><input id="stockQty" class="input" type="number" min="0" step="0.01" inputmode="decimal" value="${quantity}" data-unit-cost="${unitCost}" oninput="suggestStockValue(this)"></div><div class="field"><label>Unidad</label><select id="stockUnit" class="select">${purchaseUnitOptions(row?.unit||p?.unit||'unit')}</select></div></div><div class="field"><label>Valor aproximado de lo que quedó (opcional)</label><input id="stockValue" class="input" type="number" min="0" step="100" inputmode="numeric" value="${estimated}" placeholder="$ 0"></div><div class="note" style="margin-bottom:12px">Poné el total que tenés ahora, incluyendo sobrantes anteriores. Si escribís 0, se marca como agotado. Este valor es orientativo y no entra en las ganancias.</div><div class="grid grid-2"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="saveStockItem('${id}')">Guardar stock</button></div>${row?`<button class="btn danger wide section" onclick="deleteStockItem('${row.id}')">Eliminar del stock</button>`:''}`);
+}
+function saveStockItem(id=''){
+  ensurePurchaseData();
+  const itemName=$('#stockName').value.trim(),quantity=n($('#stockQty').value),unit=$('#stockUnit').value,valueRaw=$('#stockValue').value.trim(),estimatedValue=valueRaw===''?null:n(valueRaw),existing=id?purchaseStockRecord(id):null;
+  if(!itemName)return showToast('Escribí el ingrediente');
+  if(quantity<=0){
+    if(existing)state.purchaseStock=state.purchaseStock.filter(row=>row.id!==id);
+    saveState(false);closeModal();purchaseTab='stock';render();showToast('Ingrediente marcado como agotado');return;
+  }
+  const data={itemName,quantity,unit,estimatedValue,updatedAt:new Date().toISOString()},duplicate=state.purchaseStock.find(row=>row.id!==id&&nameKey(row.itemName)===nameKey(itemName)&&row.unit===unit);
+  if(existing)Object.assign(existing,data);else if(duplicate)Object.assign(duplicate,data);else state.purchaseStock.push({id:uid('stock'),createdAt:new Date().toISOString(),...data});
+  saveState(false);closeModal();purchaseTab='stock';currentView='purchases';render();showToast(existing||duplicate?'Stock actualizado':'Sobrante guardado');
+}
+function deleteStockItem(id){
+  if(!confirm('¿Eliminar este ingrediente del stock guardado?'))return;
+  state.purchaseStock=purchaseStockOfState().filter(row=>row.id!==id);saveState(false);closeModal();render();showToast('Ingrediente eliminado del stock');
+}
+
 function renderHistory(){
   const rows=state.weeks.slice().sort((a,b)=>b.startDate.localeCompare(a.startDate)).map(w=>{const bt=businessTotals(w),st=salesTotals(w),prod=productionByProduct(w),q=Object.values(prod).reduce((a,b)=>a+n(b),0);return `<div class="list-item clickable" onclick="showWeekSummary('${w.id}')"><div class="grow"><strong>${esc(w.label)}</strong><small>${w.status==='open'?'Activa':'Cerrada'} · ${q} producidos · ${money(bt.money+st.money)} facturación real</small></div><span class="badge ${w.status==='open'?'ok':'gray'}">${w.status==='open'?'ACTIVA':'CERRADA'}</span><span>›</span></div>`;}).join('');
   return `${hero('Historial','Semanas y tandas anteriores')}<div class="toolbar"><button class="btn primary" onclick="openNewWeekModal()">＋ Nueva semana</button>${currentWeek()?.status==='open'?'<button class="btn ghost" onclick="closeCurrentWeek()">Finalizar semana</button>':''}</div><div class="list">${rows}</div>`;
@@ -770,6 +864,7 @@ function renderMore(){
     ${action('🍰','Postres y recetas','Variedades y cantidades',"go('products')")}
     ${action('🥛','Ingredientes','Precio, envase y unidad',"go('ingredients')")}
     ${action('🛒','Lista ingredientes','Necesario para producir',"go('shopping')")}
+    ${action('🧺','Compras y stock','Gastos y mercadería guardada',"go('purchases')")}
     ${action('✅','Modo producción','Pendiente / haciendo / listo',"go('productionMode')")}
     ${action('⚙️','Configuración','Precios y backups',"go('settings')",'full')}
   </div>`;
@@ -778,7 +873,7 @@ function renderMore(){
 if('serviceWorker' in navigator){ window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(console.warn)); }
 loadState();
 const vistaInicial=new URLSearchParams(location.search).get('vista');
-if(['dashboard','ingredients','products','history','more'].includes(vistaInicial))currentView=vistaInicial;
+if(['dashboard','ingredients','products','history','purchases','more'].includes(vistaInicial))currentView=vistaInicial;
 render();
 setTimeout(()=>{
   const splash=document.getElementById('splash');
