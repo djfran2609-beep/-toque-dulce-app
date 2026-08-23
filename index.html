@@ -317,7 +317,7 @@ function seedState(){
     ingredients,
     products,
     businesses:[],
-    weeks:[{id:weekId,label:weekLabel(),startDate:todayISO(),status:'open',orders:[],ownProduction:{},publicSales:[],productionStatus:{}}],
+    weeks:[{id:weekId,label:weekLabel(),startDate:todayISO(),status:'open',orders:[],ownProduction:{},publicSales:[],publicOrders:[],productionStatus:{}}],
     currentWeekId:weekId
   };
 }
@@ -437,7 +437,7 @@ function render(){
       </div></nav>
     </div>`;
 }
-function navBtn(view,ico,label){ return `<button class="nav-btn ${currentView===view?'active':''}" onclick="go('${view}')"><span>${ico}</span>${label}</button>`; }
+function navBtn(view,ico,label){ const active=currentView===view||(view==='public'&&currentView==='publicOrders');return `<button class="nav-btn ${active?'active':''}" onclick="go('${view}')"><span>${ico}</span>${label}</button>`; }
 function hero(title,sub='',right=''){ return `<div class="hero"><div><h2>${title}</h2>${sub?`<p>${sub}</p>`:''}</div>${right}</div>`; }
 
 function renderView(){
@@ -446,6 +446,7 @@ function renderView(){
     case 'production': return renderProduction();
     case 'own': return renderOwn();
     case 'public': return renderPublic();
+    case 'publicOrders': return renderPublicOrders();
     case 'businesses': return renderBusinesses();
     case 'products': return renderProducts();
     case 'ingredients': return renderIngredients();
@@ -474,6 +475,7 @@ function renderDashboard(){
       ${action('🧾','Nuevo pedido','Cargar un negocio',"openOrderModal()")}
       ${action('🍓','Producción propia','Lo que venden ustedes',"go('own')")}
       ${action('🛍️','Ventas','Stock y ventas al público',"go('public')")}
+      ${action('📍','Pedidos al público','Direcciones y reparto',"go('publicOrders')")}
       ${action('📋','Lista de producción','Suma negocios + público',"go('production')")}
       ${action('✅','Modo producción','Marcar lo terminado',"go('productionMode')")}
       ${action('🛒','Ingredientes','Qué necesitás preparar',"go('shopping')")}
@@ -571,9 +573,11 @@ function saveOwnProduction(){ if(!ensureOpenWeek()) return; const w=currentWeek(
 function renderPublic(){
   const w=currentWeek(), stock=stockByProduct(w), reserved=businessQtyByProduct(w), st=salesTotals(w), pids=[...new Set([...Object.keys(stock),...Object.keys(reserved)])];
   const rows=pids.sort((a,b)=>(product(a)?.name||'').localeCompare(product(b)?.name||'')).map(pid=>{const p=product(pid),q=Math.max(0,n(stock[pid])),businessQty=n(reserved[pid]);return `<div class="list-item"><div class="grow"><strong>${esc(p?.name||'Postre')}</strong><small>${money(priceOf(p||{},'public'))} c/u</small><small><span class="badge ${q>0?'ok':'gray'}">${qtyFmt(q)} para vender</span>${businessQty?` <span class="badge warn">${qtyFmt(businessQty)} reservados</span>`:''}</small></div><button class="btn small primary" onclick="openSaleModal('${pid}')" ${q<1?'disabled':''}>${q>0?'Vender':'Sin stock'}</button></div>`;}).join('');
-  const sales=w.publicSales.slice().reverse().map(s=>`<div class="list-item"><div class="grow"><strong>${esc(product(s.productId)?.name||'Postre')} × ${s.qty}</strong><small>${new Date(s.date).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} · ${money(s.unitPrice)} c/u</small></div><div class="amount">${money(s.qty*s.unitPrice)}</div><button class="icon-btn" onclick="deleteSale('${s.id}')">🗑</button></div>`).join('');
+  const sales=w.publicSales.slice().reverse().map(s=>`<div class="list-item"><div class="grow"><strong>${esc(product(s.productId)?.name||'Postre')} × ${s.qty}</strong><small>${new Date(s.date).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} · ${money(s.unitPrice)} c/u${s.publicOrderId?' · pedido con envío':''}</small></div><div class="amount">${money(s.qty*s.unitPrice)}</div><button class="icon-btn" onclick="${s.publicOrderId?`showPublicOrder('${s.publicOrderId}')`:`deleteSale('${s.id}')`}">${s.publicOrderId?'📍':'🗑'}</button></div>`).join('');
+  const pendingDeliveries=publicOrdersOf(w).filter(o=>!o.delivered).length;
   return `${hero('Ventas','Vendé la producción propia y controlá el stock')}
     <div class="grid grid-2"><div class="card stat-card"><div><div class="eyebrow">Facturación real</div><div class="value">${money(st.money)}</div></div><div class="sub">${st.qty} postres vendidos</div></div><div class="card stat-card"><div><div class="eyebrow">Stock</div><div class="value">${Object.values(stock).reduce((s,q)=>s+Math.max(0,n(q)),0)}</div></div><div class="sub">postres disponibles</div></div></div>
+    <div class="section"><button class="btn primary wide" onclick="go('publicOrders')">📍 Pedidos al público y reparto${pendingDeliveries?` · ${pendingDeliveries} pendientes`:''}</button></div>
     <div class="section"><div class="section-title"><h3>Disponibles para vender</h3><button class="btn small ghost" onclick="go('own')">+ Producción propia</button></div><div class="list">${rows||'<div class="empty"><strong>No hay stock disponible</strong><div>Cargá primero los postres en Producción propia.</div><button class="btn small primary section" onclick="go(\'own\')">Cargar producción</button></div>'}</div></div>
     <div class="section"><div class="section-title"><h3>Ventas registradas</h3></div><div class="list">${sales||'<div class="empty">Todavía no registraste ventas.</div>'}</div></div>`;
 }
@@ -586,6 +590,48 @@ function openSaleModal(selectedProductId=''){
 function updateSaleProduct(){const pid=$('#saleProduct')?.value,p=product(pid),stock=n(stockByProduct()[pid]),reserved=n(businessQtyByProduct()[pid]);if(p&&$('#salePrice'))$('#salePrice').value=priceOf(p,'public');if($('#saleQty'))$('#saleQty').max=stock;if($('#saleStockText'))$('#saleStockText').textContent=`Podés vender ${qtyFmt(stock)}. Hay ${qtyFmt(reserved)} reservados para negocios y no se tocan desde acá.`;}
 function saveSale(){const w=currentWeek(), pid=$('#saleProduct').value, qty=int($('#saleQty').value), pr=n($('#salePrice').value), stock=n(stockByProduct(w)[pid]); if(qty<1)return showToast('Cantidad inválida'); if(qty>stock)return showToast(`Solo podés vender ${stock}; lo de negocios está reservado`); w.publicSales.push({id:uid('sale'),productId:pid,qty,unitPrice:pr,date:new Date().toISOString()}); saveState(false);closeModal();render();showToast(`${product(pid)?.name||'Postre'}: quedan ${qtyFmt(stock-qty)} para vender`);}
 function deleteSale(id){if(!confirm('¿Eliminar esta venta?'))return;const w=currentWeek();w.publicSales=w.publicSales.filter(s=>s.id!==id);saveState(false);render();showToast('Venta eliminada');}
+
+function publicOrdersOf(week=currentWeek()){return Array.isArray(week?.publicOrders)?week.publicOrders:[];}
+function publicOrder(id,week=currentWeek()){return publicOrdersOf(week).find(o=>o.id===id);}
+function publicOrderQtyTotal(order){return (order?.items||[]).reduce((s,i)=>s+n(i.qty),0);}
+function publicOrderMoney(order){return (order?.items||[]).reduce((s,i)=>s+n(i.qty)*n(i.unitPrice),0);}
+function publicOrderSummary(order){return (order?.items||[]).map(i=>`${qtyFmt(i.qty)} ${product(i.productId)?.name||'Postre'}`).join(' · ');}
+function renderPublicOrders(){
+  const w=currentWeek(),orders=publicOrdersOf(w).slice().sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))),pending=orders.filter(o=>!o.delivered).length;
+  const rows=orders.map(o=>`<div class="list-item"><div class="grow clickable" onclick="showPublicOrder('${o.id}')"><strong>${esc(o.customerName||'Cliente')}</strong><small>📍 ${esc(o.address||'Sin dirección')}</small><small>${esc(publicOrderSummary(o))}</small><small><span class="badge ${o.delivered?'ok':'warn'}">${o.delivered?'ENTREGADO':'PENDIENTE'}</span></small></div><div class="amount">${money(publicOrderMoney(o))}</div><button class="icon-btn" onclick="openPublicOrderMap('${o.id}')">🗺️</button></div>`).join('');
+  return `${hero('Pedidos al público','Direcciones y reparto',`<button class="btn small primary" onclick="openPublicOrderModal()">+ Pedido</button>`)}<div class="note">Al guardar un pedido, los postres se descuentan del stock y se cuentan como vendidos. Marcarlo como entregado es solamente para organizar el reparto.</div><div class="section total-box"><div class="label">Repartos de esta semana</div><div class="big">${orders.length}</div><div class="meta">${pending} pendientes · ${orders.length-pending} entregados</div></div><div class="section list">${rows||'<div class="empty"><div class="icon">📍</div><strong>No hay pedidos al público</strong><div>Anotá el primero cuando te escriban.</div></div>'}</div><button class="fab" onclick="openPublicOrderModal()">＋ Pedido al público</button>`;
+}
+function openPublicOrderModal(orderId=''){
+  if(!ensureOpenWeek())return;
+  const w=currentWeek();w.publicOrders=publicOrdersOf(w);const existing=orderId?publicOrder(orderId,w):null,available={...stockByProduct(w)};
+  (existing?.items||[]).forEach(i=>available[i.productId]=(available[i.productId]||0)+n(i.qty));
+  const oldItems={};(existing?.items||[]).forEach(i=>oldItems[i.productId]=i);
+  const rows=activeProducts().map(p=>{const old=oldItems[p.id],pr=n(old?.unitPrice??priceOf(p,'public')),max=Math.max(0,n(available[p.id]));return `<div class="qty-row"><div class="qty-name"><strong>${esc(p.name)}</strong><small>${money(pr)} c/u · ${qtyFmt(max)} disponibles</small></div><input class="qty-input public-order-qty" data-pid="${p.id}" data-price="${pr}" data-stock="${max}" type="number" min="0" max="${max}" step="1" value="${old?.qty||''}" oninput="updatePublicOrderTotal()"><div class="subtotal" id="publicordersub_${p.id}">${old?.qty?money(n(old.qty)*pr):'—'}</div></div>`;}).join('');
+  modal(existing?'Editar pedido al público':'Nuevo pedido al público',`<div class="field"><label>Nombre del cliente *</label><input id="publicOrderName" class="input" value="${esc(existing?.customerName||'')}"></div><div class="field"><label>Dirección completa *</label><input id="publicOrderAddress" class="input" placeholder="Ej: San Martín 357, Pehuajó" value="${esc(existing?.address||'')}"></div><div class="field"><label>Teléfono (opcional)</label><input id="publicOrderPhone" class="input" type="tel" value="${esc(existing?.phone||'')}"></div><div class="field"><label>Observaciones (opcional)</label><textarea id="publicOrderNotes" class="textarea" placeholder="Timbre, entre calles, horario…">${esc(existing?.notes||'')}</textarea></div><div class="card" style="padding:10px 13px">${rows}</div><div class="section total-box"><div class="label">Total del pedido</div><div class="big" id="publicOrderMoney">${money(existing?publicOrderMoney(existing):0)}</div><div class="meta" id="publicOrderQty">${existing?publicOrderQtyTotal(existing):0} postres</div></div><div class="note">Este pedido contará como venta apenas lo guardes.</div><div class="form-row section"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="savePublicOrder('${orderId}')">Guardar pedido</button></div>`);
+  updatePublicOrderTotal();
+}
+function updatePublicOrderTotal(){let q=0,m=0;$$('.public-order-qty').forEach(inp=>{const qty=int(inp.value),pr=n(inp.dataset.price);q+=qty;m+=qty*pr;const sub=$(`#publicordersub_${inp.dataset.pid}`);if(sub)sub.textContent=qty?money(qty*pr):'—';});if($('#publicOrderMoney'))$('#publicOrderMoney').textContent=money(m);if($('#publicOrderQty'))$('#publicOrderQty').textContent=`${q} postres`;}
+function savePublicOrder(orderId=''){
+  if(!ensureOpenWeek())return;
+  const w=currentWeek();w.publicOrders=publicOrdersOf(w);const existing=orderId?publicOrder(orderId,w):null,name=$('#publicOrderName').value.trim(),address=$('#publicOrderAddress').value.trim(),phone=$('#publicOrderPhone').value.trim(),notes=$('#publicOrderNotes').value.trim(),available={...stockByProduct(w)};
+  if(!name)return showToast('Escribí el nombre del cliente');if(!address)return showToast('Escribí la dirección');
+  (existing?.items||[]).forEach(i=>available[i.productId]=(available[i.productId]||0)+n(i.qty));
+  const items=$$('.public-order-qty').map(inp=>({productId:inp.dataset.pid,qty:int(inp.value),unitPrice:n(inp.dataset.price)})).filter(i=>i.qty>0);
+  if(!items.length)return showToast('Cargá al menos un postre');
+  for(const item of items){const stock=Math.max(0,n(available[item.productId]));if(item.qty>stock)return showToast(`Solo podés vender ${stock} ${product(item.productId)?.name||'postres'}`);}
+  const id=existing?.id||uid('public_order'),createdAt=existing?.createdAt||new Date().toISOString(),data={id,customerName:name,address,phone,notes,items,createdAt,updatedAt:new Date().toISOString(),delivered:Boolean(existing?.delivered),deliveredAt:existing?.deliveredAt||null};
+  if(existing)Object.assign(existing,data);else w.publicOrders.push(data);
+  w.publicSales=w.publicSales.filter(s=>s.publicOrderId!==id);
+  items.forEach(item=>w.publicSales.push({id:uid('sale'),productId:item.productId,qty:item.qty,unitPrice:item.unitPrice,date:createdAt,source:'publicOrder',publicOrderId:id}));
+  saveState(false);closeModal();currentView='publicOrders';render();showToast('Pedido guardado y descontado del stock');
+}
+function showPublicOrder(id){
+  const o=publicOrder(id);if(!o)return;const rows=(o.items||[]).map(i=>`<div class="money-line"><span>${qtyFmt(i.qty)} × ${esc(product(i.productId)?.name||'Postre')} · ${money(i.unitPrice)}</span><strong>${money(n(i.qty)*n(i.unitPrice))}</strong></div>`).join('');
+  modal(o.customerName||'Pedido al público',`<div class="note"><strong>📍 ${esc(o.address||'Sin dirección')}</strong>${o.phone?`<br>📞 ${esc(o.phone)}`:''}${o.notes?`<br>${esc(o.notes)}`:''}</div><div class="section">${rows}</div><div class="total-box"><div class="label">Total</div><div class="big">${money(publicOrderMoney(o))}</div><div class="meta">${publicOrderQtyTotal(o)} postres · ${o.delivered?'entregado':'pendiente de reparto'}</div></div><div class="grid grid-2 section"><button class="btn primary" onclick="openPublicOrderMap('${o.id}')">🗺️ Google Maps</button><button class="btn ${o.delivered?'ghost':'ok'}" onclick="togglePublicOrderDelivered('${o.id}')">${o.delivered?'Marcar pendiente':'✓ Entregado'}</button><button class="btn ghost" onclick="closeModal();openPublicOrderModal('${o.id}')">✏️ Editar</button><button class="btn danger" onclick="deletePublicOrder('${o.id}')">Eliminar pedido</button></div>`);
+}
+function openPublicOrderMap(id){const o=publicOrder(id);if(!o?.address)return showToast('Falta la dirección');window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(o.address)}`,'_blank','noopener');}
+function togglePublicOrderDelivered(id){const o=publicOrder(id);if(!o)return;o.delivered=!o.delivered;o.deliveredAt=o.delivered?new Date().toISOString():null;saveState(false);closeModal();render();showToast(o.delivered?'Pedido entregado':'Pedido marcado como pendiente');}
+function deletePublicOrder(id){if(!ensureOpenWeek())return;if(!confirm('¿Eliminar este pedido? Se devolverá el stock y se quitará la venta.'))return;const w=currentWeek();w.publicOrders=publicOrdersOf(w).filter(o=>o.id!==id);w.publicSales=w.publicSales.filter(s=>s.publicOrderId!==id);saveState(false);closeModal();render();showToast('Pedido eliminado y stock restaurado');}
 
 function renderProductionMode(){
   const w=currentWeek(), prod=productionByProduct(w), rows=Object.entries(prod).filter(([,q])=>q>0).sort((a,b)=>(product(a[0])?.name||'').localeCompare(product(b[0])?.name||'')).map(([pid,q])=>{
@@ -693,7 +739,7 @@ function createWeek(){
   const date=$('#newWeekDate').value||todayISO(),label=$('#newWeekLabel').value.trim()||weekLabel(date);
   state.weeks.filter(w=>w.status==='open').forEach(w=>w.status='closed');
   const id=uid('week');
-  state.weeks.push({id,label,startDate:date,status:'open',orders:[],ownProduction:{},publicSales:[],productionStatus:{}});
+  state.weeks.push({id,label,startDate:date,status:'open',orders:[],ownProduction:{},publicSales:[],publicOrders:[],productionStatus:{}});
   state.currentWeekId=id;saveState(false);closeModal();currentView='dashboard';render();showToast('Nueva semana creada');
 }
 function closeCurrentWeek(){
