@@ -190,24 +190,54 @@
       gestion=JSON.parse(JSON.stringify(nuevo));
       localStorage.setItem(CLAVE_GESTION,JSON.stringify(gestion));
       unificarCatalogo();
+      const reparado=repararCostosHistoricosPendientes();
+      if(reparado){localStorage.setItem(CLAVE,JSON.stringify(datos));avisarReparacionParaSincronizar();}
       render();
     },
     applyState:nuevo=>{
       datos=normalizar(JSON.parse(JSON.stringify(nuevo||{})));
       gestion=cargarGestion();
       unificarCatalogo();
+      const reparado=repararCostosHistoricosPendientes();
       localStorage.setItem(CLAVE,JSON.stringify(datos));
       render();
+      if(reparado)avisarReparacionParaSincronizar();
     }
   };
   function avisar(mensaje){const t=$('toast');t.textContent=mensaje;t.classList.add('ver');clearTimeout(avisar.timer);avisar.timer=setTimeout(()=>t.classList.remove('ver'),1800);}
   function costoUnitario(ing){return numero(ing.precio)/numero(ing.cantidad);}
-  function costoReceta(rec){return rec.items.reduce((s,item)=>{const ing=datos.ingredientes.find(i=>i.id===item.ingredienteId);return s+(ing?costoUnitario(ing)*numero(item.cantidad):0);},0);}
+  function costoReceta(rec){return (rec?.items||[]).reduce((s,item)=>{const ing=datos.ingredientes.find(i=>i.id===item.ingredienteId);return s+(ing?costoUnitario(ing)*numero(item.cantidad):0);},0);}
+  function recetaCompleta(rec){
+    const empaque=new Set(['vaso','etiqueta','cuchara','cucharita']);
+    return !!rec&&(rec.items||[]).some(item=>{
+      const ing=datos.ingredientes.find(i=>i.id===item.ingredienteId);
+      return ing&&numero(item.cantidad)>0&&!empaque.has(claveNombre(ing.nombre));
+    });
+  }
+  function costoRecetaParaGanancias(rec){return recetaCompleta(rec)?costoReceta(rec):null;}
   function margen(precio,costo){return precio>0?((precio-costo)/precio)*100:0;}
   function recetaPorNombre(nombre){const clave=claveNombre(nombre);return datos.recetas.find(r=>claveNombre(r.nombre)===clave);}
   function productoGestion(id){return gestion?.products?.find(p=>p.id===id);}
   function precioGestion(p,canal){if(!p)return 0;return numero(canal==='business'?(p.businessPrice??gestion?.settings?.businessPrice):(p.publicPrice??gestion?.settings?.publicPrice));}
   function semanasGestion(){return (gestion?.weeks||[]).slice().sort((a,b)=>String(a.startDate||'').localeCompare(String(b.startDate||'')));}
+  function repararCostosHistoricosPendientes(){
+    const postresCorregidos=new Set(['tiramisu','matilda']);
+    let reparado=false;
+    Object.values(datos.cierres||{}).forEach(cierre=>{
+      if(String(cierre?.startDate||'')!=='2026-08-19'||!cierre?.costosUnitarios)return;
+      Object.keys(cierre.costosUnitarios).forEach(pid=>{
+        const nombre=cierre.nombres?.[pid]||productoGestion(pid)?.name||'';
+        if(!postresCorregidos.has(claveNombre(nombre)))return;
+        const valor=cierre.costosUnitarios[pid],soloEmpaque=Number.isFinite(Number(valor))&&Number(valor)>0&&Number(valor)<=1000;
+        if((!recetaCompleta(recetaPorNombre(nombre))||soloEmpaque)&&valor!==null){
+          cierre.costosUnitarios[pid]=null;
+          reparado=true;
+        }
+      });
+    });
+    return reparado;
+  }
+  function avisarReparacionParaSincronizar(){setTimeout(()=>window.dispatchEvent(new CustomEvent('toqueDulceCostosChanged')),0);}
 
   function claveIngredienteUnificado(texto){
   const clave=claveNombre(texto);
@@ -303,6 +333,7 @@
 }
 
   unificarCatalogo();
+  if(repararCostosHistoricosPendientes())localStorage.setItem(CLAVE,JSON.stringify(datos));
 
   document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>{
     document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('activo',b===btn));
@@ -386,7 +417,7 @@
     (gestion.products||[]).forEach(p=>{
       nombres[p.id]=p.name||'Postre';
       const previo=anterior?.costosUnitarios,existe=previo&&Object.prototype.hasOwnProperty.call(previo,p.id),receta=recetaPorNombre(p.name);
-      costosUnitarios[p.id]=existe&&previo[p.id]!==null?previo[p.id]:(receta?costoReceta(receta):null);
+      costosUnitarios[p.id]=existe&&previo[p.id]!==null?previo[p.id]:costoRecetaParaGanancias(receta);
     });
     for(const inp of inputs){
       const pid=inp.dataset.pid,disponible=numero(inp.dataset.disponible),restante=numero(inp.value);
@@ -414,7 +445,7 @@
     if(guardados&&Object.prototype.hasOwnProperty.call(guardados,pid)){
       const valor=guardados[pid];return valor===null||!Number.isFinite(Number(valor))?null:Number(valor);
     }
-    const receta=recetaPorNombre(nombre);return receta?costoReceta(receta):null;
+    const receta=recetaPorNombre(nombre);return costoRecetaParaGanancias(receta);
   }
   function cierreConCostosCongelados(cierre){return !!(cierre?.costosUnitarios&&typeof cierre.costosUnitarios==='object'&&!Array.isArray(cierre.costosUnitarios));}
 
@@ -448,9 +479,9 @@
     };
     (gestion?.weeks||[]).filter(w=>String(w.startDate||'').slice(0,7)===mes).forEach(w=>{
       const cierre=datos.cierres[w.id];
-      (w.orders||[]).forEach(o=>(o.items||[]).forEach(i=>{const p=productoGestion(i.productId),nombre=cierre?.nombres?.[i.productId]||p?.name||'Postre',receta=recetaPorNombre(nombre),costo=cierre?costoDelCierre(cierre,i.productId,nombre):(receta?costoReceta(receta):null),cantidad=numero(i.qty),precio=numero(i.unitPrice??precioGestion(p,'business'));sumar(nombre,'negocio',cantidad,cantidad*precio,costo);}));
+      (w.orders||[]).forEach(o=>(o.items||[]).forEach(i=>{const p=productoGestion(i.productId),nombre=cierre?.nombres?.[i.productId]||p?.name||'Postre',receta=recetaPorNombre(nombre),costo=cierre?costoDelCierre(cierre,i.productId,nombre):costoRecetaParaGanancias(receta),cantidad=numero(i.qty),precio=numero(i.unitPrice??precioGestion(p,'business'));sumar(nombre,'negocio',cantidad,cantidad*precio,costo);}));
       if(!cierre){
-        (w.publicSales||[]).forEach(v=>{const p=productoGestion(v.productId),nombre=p?.name||'Postre',receta=recetaPorNombre(nombre),cantidad=numero(v.qty),precio=numero(v.unitPrice??precioGestion(p,'public'));sumar(nombre,'publico',cantidad,cantidad*precio,receta?costoReceta(receta):null);});
+        (w.publicSales||[]).forEach(v=>{const p=productoGestion(v.productId),nombre=p?.name||'Postre',receta=recetaPorNombre(nombre),cantidad=numero(v.qty),precio=numero(v.unitPrice??precioGestion(p,'public'));sumar(nombre,'publico',cantidad,cantidad*precio,costoRecetaParaGanancias(receta));});
       }
     });
     Object.values(datos.cierres).filter(c=>String(c.startDate||'').slice(0,7)===mes).forEach(c=>{
@@ -471,7 +502,7 @@
     if(!semana)return [];
     const cierre=datos.cierres[semana.id];
     (semana.orders||[]).forEach(o=>(o.items||[]).forEach(i=>{
-      const p=productoGestion(i.productId),nombre=cierre?.nombres?.[i.productId]||p?.name||'Postre',receta=recetaPorNombre(nombre),costo=cierre?costoDelCierre(cierre,i.productId,nombre):(receta?costoReceta(receta):null),cantidad=numero(i.qty),precio=numero(i.unitPrice??precioGestion(p,'business'));
+      const p=productoGestion(i.productId),nombre=cierre?.nombres?.[i.productId]||p?.name||'Postre',receta=recetaPorNombre(nombre),costo=cierre?costoDelCierre(cierre,i.productId,nombre):costoRecetaParaGanancias(receta),cantidad=numero(i.qty),precio=numero(i.unitPrice??precioGestion(p,'business'));
       sumar(nombre,'negocio',cantidad,cantidad*precio,costo);
     }));
     if(cierre){
@@ -482,7 +513,7 @@
     }else{
       (semana.publicSales||[]).forEach(v=>{
         const p=productoGestion(v.productId),nombre=p?.name||'Postre',receta=recetaPorNombre(nombre),cantidad=numero(v.qty),precio=numero(v.unitPrice??precioGestion(p,'public'));
-        sumar(nombre,'publico',cantidad,cantidad*precio,receta?costoReceta(receta):null);
+        sumar(nombre,'publico',cantidad,cantidad*precio,costoRecetaParaGanancias(receta));
       });
     }
     return Object.values(mapa);
@@ -492,7 +523,7 @@
     gestion=cargarGestion();
     const mes=datos.mesActivo,egresos=datos.egresos.filter(e=>e.mes===mes);
     $('mesGanancias').value=mes;
-    $('gananciaUnidad').innerHTML=datos.recetas.length?`<table class="tabla-simple"><thead><tr><th>Postre</th><th>Costo</th><th>Negocio</th><th>Público</th></tr></thead><tbody>${datos.recetas.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(r=>{const c=costoReceta(r);return `<tr><td><strong>${escapar(r.nombre)}</strong></td><td>${dinero(c)}</td><td class="${r.precioNegocio-c<0?'texto-rojo':'positivo'}">${dinero(numero(r.precioNegocio)-c)}</td><td class="${r.precioPublico-c<0?'texto-rojo':'positivo'}">${dinero(numero(r.precioPublico)-c)}</td></tr>`;}).join('')}</tbody></table>`:'<div class="lista-vacia">Los postres aparecerán acá cuando cargues sus recetas.</div>';
+    $('gananciaUnidad').innerHTML=datos.recetas.length?`<table class="tabla-simple"><thead><tr><th>Postre</th><th>Costo</th><th>Negocio</th><th>Público</th></tr></thead><tbody>${datos.recetas.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(r=>{const c=costoRecetaParaGanancias(r);if(c===null)return `<tr><td><strong>${escapar(r.nombre)}</strong></td><td colspan="3" class="texto-rojo"><strong>Falta receta</strong></td></tr>`;return `<tr><td><strong>${escapar(r.nombre)}</strong></td><td>${dinero(c)}</td><td class="${r.precioNegocio-c<0?'texto-rojo':'positivo'}">${dinero(numero(r.precioNegocio)-c)}</td><td class="${r.precioPublico-c<0?'texto-rojo':'positivo'}">${dinero(numero(r.precioPublico)-c)}</td></tr>`;}).join('')}</tbody></table>`:'<div class="lista-vacia">Los postres aparecerán acá cuando cargues sus recetas.</div>';
 
     const semanas=semanasGestion().slice().reverse();
     $('estadoGestion').className=gestion?'estado-ok':'estado-aviso';
@@ -573,12 +604,14 @@
 
   function render(){
     $('nIngredientes').textContent=datos.ingredientes.length;$('nRecetas').textContent=datos.recetas.length;
-    const prom=datos.recetas.length?datos.recetas.reduce((s,r)=>s+costoReceta(r),0)/datos.recetas.length:0;$('promedio').textContent=dinero(prom);
+    const costosCompletos=datos.recetas.map(costoRecetaParaGanancias).filter(c=>c!==null),prom=costosCompletos.length?costosCompletos.reduce((s,c)=>s+c,0)/costosCompletos.length:0;$('promedio').textContent=dinero(prom);
     $('listaIngredientes').innerHTML=datos.ingredientes.length?datos.ingredientes.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(i=>`<div class="item"><div class="fila"><div><div class="nombre">${escapar(i.nombre)}</div><div class="detalle">${dinero(i.precio)} por ${formato(i.cantidad)} ${i.unidad}</div></div><div class="costo">${dinero(costoUnitario(i))}/${i.unidad}</div></div></div>`).join(''):'<div class="lista-vacia">Todavía no cargaste ingredientes.</div>';
     $('listaRecetas').innerHTML=datos.recetas.length?datos.recetas.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(r=>{
-      const costo=costoReceta(r),pn=numero(r.precioNegocio),pp=numero(r.precioPublico),negN=pn>0&&pn<costo,pubN=pp>0&&pp<costo;
+      const costo=costoRecetaParaGanancias(r),pn=numero(r.precioNegocio),pp=numero(r.precioPublico);
+      if(costo===null)return `<div class="receta-card"><div class="receta-top"><div><div class="nombre">${escapar(r.nombre)}</div><div class="detalle">Receta pendiente de completar</div></div><div class="texto-rojo"><strong>Falta receta</strong></div></div><div class="acciones"><button class="btn chico" onclick="location.href='index.html?v=12&vista=products'">Editar en Postres</button></div></div>`;
+      const negN=pn>0&&pn<costo,pubN=pp>0&&pp<costo;
       const desglose=r.items.map(item=>{const i=datos.ingredientes.find(x=>x.id===item.ingredienteId);return i?`<div><span>${escapar(i.nombre)} · ${formato(item.cantidad)} ${i.unidad}</span><strong>${dinero(costoUnitario(i)*item.cantidad)}</strong></div>`:'';}).join('');
-      return `<div class="receta-card"><div class="receta-top"><div><div class="nombre">${escapar(r.nombre)}</div><div class="detalle">Costo total por unidad</div></div><div class="total">${dinero(costo)}</div></div><div class="desglose">${desglose}</div>${pn>0?`<div class="ganancia ${negN?'negativa':''}"><div><span>Venta a negocio</span><strong>${dinero(pn)}</strong></div><div><span>Ganancia</span><strong>${dinero(pn-costo)}</strong></div><div><span>Margen sobre venta</span><strong>${formato(margen(pn,costo))}%</strong></div></div>`:''}${pp>0?`<div class="ganancia ${pubN?'negativa':''}"><div><span>Venta al público</span><strong>${dinero(pp)}</strong></div><div><span>Ganancia</span><strong>${dinero(pp-costo)}</strong></div><div><span>Margen sobre venta</span><strong>${formato(margen(pp,costo))}%</strong></div></div>`:''}<div class="acciones"><button class="btn chico" onclick="location.href='index.html?v=11&vista=products'">Editar en Postres</button></div></div>`;
+      return `<div class="receta-card"><div class="receta-top"><div><div class="nombre">${escapar(r.nombre)}</div><div class="detalle">Costo total por unidad</div></div><div class="total">${dinero(costo)}</div></div><div class="desglose">${desglose}</div>${pn>0?`<div class="ganancia ${negN?'negativa':''}"><div><span>Venta a negocio</span><strong>${dinero(pn)}</strong></div><div><span>Ganancia</span><strong>${dinero(pn-costo)}</strong></div><div><span>Margen sobre venta</span><strong>${formato(margen(pn,costo))}%</strong></div></div>`:''}${pp>0?`<div class="ganancia ${pubN?'negativa':''}"><div><span>Venta al público</span><strong>${dinero(pp)}</strong></div><div><span>Ganancia</span><strong>${dinero(pp-costo)}</strong></div><div><span>Margen sobre venta</span><strong>${formato(margen(pp,costo))}%</strong></div></div>`:''}<div class="acciones"><button class="btn chico" onclick="location.href='index.html?v=12&vista=products'">Editar en Postres</button></div></div>`;
     }).join(''):'<div class="lista-vacia">Todavía no cargaste recetas.</div>';
     renderGanancias();
     renderTops();
