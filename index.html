@@ -213,6 +213,7 @@ const STORAGE_KEY = 'toque_dulce_pwa_v1';
 let state;
 let currentView = 'dashboard';
 let purchaseTab = 'purchases';
+let publicTab = 'deliveries';
 let toastTimer;
 
 const $ = (sel, root=document) => root.querySelector(sel);
@@ -426,6 +427,7 @@ function modal(title, body, opts={}){
   document.body.appendChild(wrap); return wrap;
 }
 function go(view){ currentView=view; render(); window.scrollTo({top:0,behavior:'smooth'}); }
+function setPublicTab(tab){ publicTab=tab==='stock'?'stock':'deliveries'; currentView='public'; render(); window.scrollTo({top:0,behavior:'smooth'}); }
 
 function render(){
   const w=currentWeek();
@@ -441,7 +443,7 @@ function render(){
         ${navBtn('dashboard','⌂','Inicio')}
         ${navBtn('orders','🧾','Pedidos')}
         ${navBtn('production','🍮','Producción')}
-        ${navBtn('public','🛍️','Ventas')}
+        ${navBtn('public','📍','Reparto')}
         ${navBtn('more','⋯','Más')}
       </div></nav>
     </div>`;
@@ -455,7 +457,7 @@ function renderView(){
     case 'production': return renderProduction();
     case 'own': return renderOwn();
     case 'public': return renderPublic();
-    case 'publicOrders': return renderPublicOrders();
+    case 'publicOrders': publicTab='deliveries'; currentView='public'; return renderPublic();
     case 'businesses': return renderBusinesses();
     case 'products': return renderProducts();
     case 'ingredients': return renderIngredients();
@@ -484,8 +486,7 @@ function renderDashboard(){
       ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=12&vista=ganancias'",'profit')}
       ${action('🧾','Nuevo pedido','Cargar un negocio',"openOrderModal()")}
       ${action('🍓','Producción propia','Lo que venden ustedes',"go('own')")}
-      ${action('🛍️','Ventas','Stock y ventas al público',"go('public')")}
-      ${action('📍','Pedidos al público','Direcciones y reparto',"go('publicOrders')")}
+      ${action('📍','Repartos y ventas','Pedidos, stock y movimientos',"setPublicTab('deliveries')")}
       ${action('📋','Lista de producción','Suma negocios + público',"go('production')")}
       ${action('✅','Modo producción','Marcar lo terminado',"go('productionMode')")}
       ${action('🛒','Ingredientes','Qué necesitás preparar',"go('shopping')")}
@@ -590,15 +591,26 @@ function updateOwnTotal(){ let q=0,m=0; $$('.own-qty').forEach(inp=>{const qty=i
 function saveOwnProduction(){ if(!ensureOpenWeek()) return; const w=currentWeek(), obj={}; $$('.own-qty').forEach(inp=>{const qty=int(inp.value);if(qty)obj[inp.dataset.pid]={qty,unitPrice:n(inp.dataset.price)};}); w.ownProduction=obj; saveState(false); render(); showToast('Producción propia guardada'); }
 
 function renderPublic(){
-  const w=currentWeek(), stock=stockByProduct(w), reserved=businessQtyByProduct(w), st=salesTotals(w), pids=[...new Set([...Object.keys(stock),...Object.keys(reserved)])];
-  const rows=pids.sort((a,b)=>(product(a)?.name||'').localeCompare(product(b)?.name||'')).map(pid=>{const p=product(pid),q=Math.max(0,n(stock[pid])),businessQty=n(reserved[pid]);return `<div class="list-item"><div class="grow"><strong>${esc(p?.name||'Postre')}</strong><small>${money(priceOf(p||{},'public'))} c/u</small><small><span class="badge ${q>0?'ok':'gray'}">${qtyFmt(q)} para vender</span>${businessQty?` <span class="badge warn">${qtyFmt(businessQty)} reservados</span>`:''}</small></div><button class="btn small primary" onclick="openSaleModal('${pid}')" ${q<1?'disabled':''}>${q>0?'Vender':'Sin stock'}</button></div>`;}).join('');
-  const sales=w.publicSales.slice().reverse().map(s=>{const method=s.publicOrderId?orderPaymentMethod(publicOrder(s.publicOrderId,w)):orderPaymentMethod(s);return `<div class="list-item"><div class="grow"><strong>${esc(product(s.productId)?.name||'Postre')} × ${s.qty}</strong><small>${new Date(s.date).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})} · ${money(s.unitPrice)} c/u${s.publicOrderId?' · pedido con envío':''}</small><small><span class="badge ${paymentBadgeClass(method)}">${paymentLabel(method)}</span></small></div><div class="amount">${money(s.qty*s.unitPrice)}</div><button class="icon-btn" onclick="${s.publicOrderId?`showPublicOrder('${s.publicOrderId}')`:`deleteSale('${s.id}')`}">${s.publicOrderId?'📍':'🗑'}</button></div>`;}).join('');
-  const pendingDeliveries=publicOrdersOf(w).filter(o=>!o.delivered).length;
-  return `${hero('Ventas','Vendé la producción propia y controlá el stock')}
-    <div class="grid grid-2"><div class="card stat-card"><div><div class="eyebrow">Facturación real</div><div class="value">${money(st.money)}</div></div><div class="sub">${st.qty} postres vendidos</div></div><div class="card stat-card"><div><div class="eyebrow">Stock</div><div class="value">${Object.values(stock).reduce((s,q)=>s+Math.max(0,n(q)),0)}</div></div><div class="sub">postres disponibles</div></div></div>
-    <div class="section"><button class="btn primary wide" onclick="go('publicOrders')">📍 Pedidos al público y reparto${pendingDeliveries?` · ${pendingDeliveries} pendientes`:''}</button></div>
-    <div class="section"><div class="section-title"><h3>Disponibles para vender</h3><button class="btn small ghost" onclick="go('own')">+ Producción propia</button></div><div class="list">${rows||'<div class="empty"><strong>No hay stock disponible</strong><div>Cargá primero los postres en Producción propia.</div><button class="btn small primary section" onclick="go(\'own\')">Cargar producción</button></div>'}</div></div>
-    <div class="section"><div class="section-title"><h3>Ventas registradas</h3></div><div class="list">${sales||'<div class="empty">Todavía no registraste ventas.</div>'}</div></div>`;
+  const w=currentWeek(),stock=stockByProduct(w),st=salesTotals(w),orders=publicOrdersOf(w),pending=orders.filter(o=>!o.delivered).length,stockTotal=Object.values(stock).reduce((s,q)=>s+Math.max(0,n(q)),0);
+  const tabs=`<div class="segmented" style="width:100%;margin-top:14px"><button class="${publicTab==='deliveries'?'active':''}" onclick="setPublicTab('deliveries')">REPARTOS</button><button class="${publicTab==='stock'?'active':''}" onclick="setPublicTab('stock')">STOCK Y MOVIMIENTOS</button></div>`;
+  const header=`${hero('Repartos y ventas','Pedidos al público, stock y movimientos',`<button class="btn small primary" onclick="openPublicOrderModal()">+ Pedido</button>`)}<div class="grid grid-3"><div class="card stat-card"><div><div class="eyebrow">Pendientes</div><div class="value">${pending}</div></div><div class="sub">repartos</div></div><div class="card stat-card"><div><div class="eyebrow">Stock</div><div class="value">${qtyFmt(stockTotal)}</div></div><div class="sub">postres</div></div><div class="card stat-card"><div><div class="eyebrow">Vendido</div><div class="value">${money(st.money)}</div></div><div class="sub">${qtyFmt(st.qty)} postres</div></div></div>${tabs}`;
+  if(publicTab==='deliveries')return `${header}${renderPublicOrders()}`;
+  const rows=activeProducts().map(p=>{const q=Math.max(0,n(stock[p.id]));return `<div class="list-item"><div class="grow"><strong>${esc(p.name)}</strong><small>${money(priceOf(p,'public'))} c/u</small></div><span class="badge ${q>0?'ok':'gray'}">${qtyFmt(q)} disponibles</span></div>`;}).join('');
+  const movements=[
+    ...w.publicSales.filter(s=>!s.publicOrderId).map(s=>({type:'sale',at:s.date||'',sale:s})),
+    ...publicOrdersOf(w).filter(o=>o.delivered).map(o=>({type:'publicOrder',at:o.deliveredAt||o.updatedAt||o.createdAt||'',order:o}))
+  ].sort((a,b)=>String(b.at).localeCompare(String(a.at)));
+  const sales=movements.map(row=>{
+    if(row.type==='publicOrder'){
+      const o=row.order,method=orderPaymentMethod(o),date=new Date(row.at).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+      return `<div class="list-item"><div class="grow"><strong>Pedido · ${esc(o.customerName||'Cliente')}</strong><small>${esc(publicOrderSummary(o))}</small><small>${date} · entregado · <span class="badge ${paymentBadgeClass(method)}">${paymentLabel(method)}</span></small></div><div class="amount">${money(publicOrderMoney(o))}</div><button class="icon-btn" onclick="showPublicOrder('${o.id}')">📍</button></div>`;
+    }
+    const s=row.sale,method=orderPaymentMethod(s),date=new Date(row.at).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+    return `<div class="list-item"><div class="grow"><strong>${esc(product(s.productId)?.name||'Postre')} × ${s.qty}</strong><small>${date} · ${money(s.unitPrice)} c/u</small><small><span class="badge ${paymentBadgeClass(method)}">${paymentLabel(method)}</span></small></div><div class="amount">${money(s.qty*s.unitPrice)}</div><button class="icon-btn" onclick="deleteSale('${s.id}')">🗑</button></div>`;
+  }).join('');
+  return `${header}
+    <div class="section"><div class="section-title"><h3>Stock disponible</h3><button class="btn small ghost" onclick="go('own')">+ Producción propia</button></div><div class="list">${rows||'<div class="empty"><strong>No hay postres cargados</strong><div>Cargá primero la producción propia.</div></div>'}</div></div>
+    <div class="section"><div class="section-title"><h3>Últimos movimientos de venta</h3></div><div class="list">${sales||'<div class="empty">Todavía no registraste ventas ni entregaste pedidos al público.</div>'}</div></div>`;
 }
 function openSaleModal(selectedProductId=''){
   if(!ensureOpenWeek()) return;
@@ -616,9 +628,9 @@ function publicOrderQtyTotal(order){return (order?.items||[]).reduce((s,i)=>s+n(
 function publicOrderMoney(order){return (order?.items||[]).reduce((s,i)=>s+n(i.qty)*n(i.unitPrice),0);}
 function publicOrderSummary(order){return (order?.items||[]).map(i=>`${qtyFmt(i.qty)} ${product(i.productId)?.name||'Postre'}`).join(' · ');}
 function renderPublicOrders(){
-  const w=currentWeek(),orders=publicOrdersOf(w).slice().sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||''))),pending=orders.filter(o=>!o.delivered).length;
+  const w=currentWeek(),orders=publicOrdersOf(w).slice().sort((a,b)=>Number(a.delivered)-Number(b.delivered)||String(b.createdAt||'').localeCompare(String(a.createdAt||''))),pending=orders.filter(o=>!o.delivered).length;
   const rows=orders.map(o=>{const method=orderPaymentMethod(o);return `<div class="list-item"><div class="grow clickable" onclick="showPublicOrder('${o.id}')"><strong>${esc(o.customerName||'Cliente')}</strong><small>📍 ${esc(o.address||'Sin dirección')}</small><small>${esc(publicOrderSummary(o))}</small><small><span class="badge ${o.delivered?'ok':'warn'}">${o.delivered?'ENTREGADO':'PENDIENTE'}</span> <span class="badge ${paymentBadgeClass(method)}">${paymentLabel(method)}</span></small></div><div class="amount">${money(publicOrderMoney(o))}</div><button class="icon-btn" onclick="openPublicOrderMap('${o.id}')">🗺️</button></div>`;}).join('');
-  return `${hero('Pedidos al público','Direcciones y reparto',`<button class="btn small primary" onclick="openPublicOrderModal()">+ Pedido</button>`)}<div class="note">Al guardar un pedido, los postres se descuentan del stock y se cuentan como vendidos. El dinero ingresa solamente cuando lo marques como cobrado en efectivo o transferencia.</div><div class="section total-box"><div class="label">Repartos de esta semana</div><div class="big">${orders.length}</div><div class="meta">${pending} pendientes · ${orders.length-pending} entregados</div></div><div class="section list">${rows||'<div class="empty"><div class="icon">📍</div><strong>No hay pedidos al público</strong><div>Anotá el primero cuando te escriban.</div></div>'}</div><button class="fab" onclick="openPublicOrderModal()">＋ Pedido al público</button>`;
+  return `<div class="note section">Al guardar un pedido se descuenta del stock. Cuando toques <strong>Efectivo</strong> o <strong>Transferencia</strong>, quedará cobrado y entregado automáticamente.</div><div class="section total-box"><div class="label">Repartos de esta semana</div><div class="big">${orders.length}</div><div class="meta">${pending} pendientes · ${orders.length-pending} entregados</div></div><div class="section list">${rows||'<div class="empty"><div class="icon">📍</div><strong>No hay pedidos al público</strong><div>Anotá el primero cuando te escriban.</div></div>'}</div><button class="fab" onclick="openPublicOrderModal()">＋ Pedido al público</button>`;
 }
 function openPublicOrderModal(orderId=''){
   if(!ensureOpenWeek())return;
@@ -642,19 +654,18 @@ function savePublicOrder(orderId=''){
   if(existing)Object.assign(existing,data);else w.publicOrders.push(data);
   w.publicSales=w.publicSales.filter(s=>s.publicOrderId!==id);
   items.forEach(item=>w.publicSales.push({id:uid('sale'),productId:item.productId,qty:item.qty,unitPrice:item.unitPrice,date:createdAt,source:'publicOrder',publicOrderId:id}));
-  saveState(false);closeModal();currentView='publicOrders';render();showToast('Pedido guardado y descontado del stock');
+  saveState(false);closeModal();publicTab='deliveries';currentView='public';render();showToast('Pedido guardado y descontado del stock');
 }
 function showPublicOrder(id){
   const o=publicOrder(id);if(!o)return;const rows=(o.items||[]).map(i=>`<div class="money-line"><span>${qtyFmt(i.qty)} × ${esc(product(i.productId)?.name||'Postre')} · ${money(i.unitPrice)}</span><strong>${money(n(i.qty)*n(i.unitPrice))}</strong></div>`).join(''),method=orderPaymentMethod(o);
-  modal(o.customerName||'Pedido al público',`<div class="note"><strong>📍 ${esc(o.address||'Sin dirección')}</strong>${o.phone?`<br>📞 ${esc(o.phone)}`:''}${o.notes?`<br>${esc(o.notes)}`:''}</div><div class="section">${rows}</div><div class="total-box"><div class="label">Total</div><div class="big">${money(publicOrderMoney(o))}</div><div class="meta">${publicOrderQtyTotal(o)} postres · ${o.delivered?'entregado':'pendiente de reparto'}</div></div><div class="section"><div class="section-title"><h3>Pago del pedido</h3><span class="badge ${paymentBadgeClass(method)}">${paymentLabel(method)}</span></div><div class="grid grid-2"><button class="btn ${method==='cash'?'ok':'ghost'}" onclick="setPublicOrderPayment('${o.id}','cash')">💵 Efectivo</button><button class="btn ${method==='transfer'?'ok':'ghost'}" onclick="setPublicOrderPayment('${o.id}','transfer')">📲 Transferencia</button></div>${method!=='pending'?`<button class="btn ghost wide section" onclick="setPublicOrderPayment('${o.id}','pending')">Marcar pago pendiente</button>`:''}</div><div class="grid grid-2 section"><button class="btn primary" onclick="openPublicOrderMap('${o.id}')">🗺️ Google Maps</button><button class="btn ${o.delivered?'ghost':'ok'}" onclick="togglePublicOrderDelivered('${o.id}')">${o.delivered?'Marcar pendiente':'✓ Entregado'}</button><button class="btn ghost" onclick="closeModal();openPublicOrderModal('${o.id}')">✏️ Editar</button><button class="btn danger" onclick="deletePublicOrder('${o.id}')">Eliminar pedido</button></div>`);
+  modal(o.customerName||'Pedido al público',`<div class="note"><strong>📍 ${esc(o.address||'Sin dirección')}</strong>${o.phone?`<br>📞 ${esc(o.phone)}`:''}${o.notes?`<br>${esc(o.notes)}`:''}</div><div class="section">${rows}</div><div class="total-box"><div class="label">Total</div><div class="big">${money(publicOrderMoney(o))}</div><div class="meta">${publicOrderQtyTotal(o)} postres · ${o.delivered?'entregado':'pendiente de reparto'}</div></div><div class="section"><div class="section-title"><h3>${o.delivered?'Pago del pedido':'Cobrar y entregar'}</h3><span class="badge ${paymentBadgeClass(method)}">${paymentLabel(method)}</span></div><div class="grid grid-2"><button class="btn ${method==='cash'?'ok':'ghost'}" onclick="setPublicOrderPayment('${o.id}','cash')">💵 Efectivo</button><button class="btn ${method==='transfer'?'ok':'ghost'}" onclick="setPublicOrderPayment('${o.id}','transfer')">📲 Transferencia</button></div>${method!=='pending'||o.delivered?`<button class="btn ghost wide section" onclick="setPublicOrderPayment('${o.id}','pending')">Volver a pendiente</button>`:''}</div><div class="grid grid-2 section"><button class="btn primary" onclick="openPublicOrderMap('${o.id}')">🗺️ Google Maps</button><button class="btn ghost" onclick="closeModal();openPublicOrderModal('${o.id}')">✏️ Editar</button></div><button class="btn danger wide section" onclick="deletePublicOrder('${o.id}')">Eliminar pedido</button>`);
 }
 function setPublicOrderPayment(id,method){
-  const o=publicOrder(id);if(!o)return;const oldMethod=orderPaymentMethod(o),nextMethod=['cash','transfer'].includes(method)?method:'pending',wasPaid=['cash','transfer'].includes(oldMethod);o.paymentMethod=nextMethod;
-  if(nextMethod==='pending'){o.paidAt=null;o.moneyCycleId=null;}else if(!wasPaid){o.paidAt=new Date().toISOString();o.moneyCycleId=activeMoneyCycle();}else if(!o.paidAt)o.paidAt=new Date().toISOString();
-  saveState(false);closeModal();render();showToast(nextMethod==='pending'?'Pago marcado como pendiente':`Pedido cobrado en ${paymentLabel(nextMethod).toLowerCase()}`);
+  const o=publicOrder(id);if(!o)return;const oldMethod=orderPaymentMethod(o),nextMethod=['cash','transfer'].includes(method)?method:'pending',wasPaid=['cash','transfer'].includes(oldMethod),now=new Date().toISOString();o.paymentMethod=nextMethod;
+  if(nextMethod==='pending'){o.paidAt=null;o.moneyCycleId=null;o.delivered=false;o.deliveredAt=null;}else{if(!wasPaid){o.paidAt=now;o.moneyCycleId=activeMoneyCycle();}else if(!o.paidAt)o.paidAt=now;o.delivered=true;if(!o.deliveredAt)o.deliveredAt=now;}
+  saveState(false);closeModal();render();showToast(nextMethod==='pending'?'Pedido vuelto a pendiente':`Pedido entregado y cobrado en ${paymentLabel(nextMethod).toLowerCase()}`);
 }
 function openPublicOrderMap(id){const o=publicOrder(id);if(!o?.address)return showToast('Falta la dirección');window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(o.address)}`,'_blank','noopener');}
-function togglePublicOrderDelivered(id){const o=publicOrder(id);if(!o)return;o.delivered=!o.delivered;o.deliveredAt=o.delivered?new Date().toISOString():null;saveState(false);closeModal();render();showToast(o.delivered?'Pedido entregado':'Pedido marcado como pendiente');}
 function deletePublicOrder(id){if(!ensureOpenWeek())return;if(!confirm('¿Eliminar este pedido? Se devolverá el stock y se quitará la venta.'))return;const w=currentWeek();w.publicOrders=publicOrdersOf(w).filter(o=>o.id!==id);w.publicSales=w.publicSales.filter(s=>s.publicOrderId!==id);saveState(false);closeModal();render();showToast('Pedido eliminado y stock restaurado');}
 
 function renderProductionMode(){
