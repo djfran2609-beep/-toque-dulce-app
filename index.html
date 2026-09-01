@@ -322,6 +322,7 @@ function seedState(){
     purchases:[],
     purchaseStock:[],
     otherExpenses:[],
+    nextWeekOrders:[],
     moneyControl:{cycleId:null,cashOpening:0,transferOpening:0,startedAt:null},
     weeks:[{id:weekId,label:weekLabel(),startDate:todayISO(),status:'open',orders:[],ownProduction:{},publicSales:[],publicOrders:[],productionStatus:{}}],
     currentWeekId:weekId
@@ -340,6 +341,7 @@ function loadState(){
   if(!Array.isArray(state.purchases)) state.purchases=[];
   if(!Array.isArray(state.purchaseStock)) state.purchaseStock=[];
   if(!Array.isArray(state.otherExpenses))state.otherExpenses=[];
+  if(!Array.isArray(state.nextWeekOrders))state.nextWeekOrders=[];
   if(!state.moneyControl||typeof state.moneyControl!=='object')state.moneyControl={cycleId:null,cashOpening:0,transferOpening:0,startedAt:null};
   dedupeStateIngredients();
   saveState(false);
@@ -506,46 +508,57 @@ function renderOrders(){
   const rows=w.orders.length ? w.orders.map(o=>{
     const b=business(o.businessId),method=orderPaymentMethod(o); return `<div class="list-item clickable" onclick="showOrder('${o.id}')"><div class="grow"><strong>${esc(b?.name||'Negocio')}</strong><small>${orderQtyTotal(o)} postres · <span class="badge ${paymentBadgeClass(method)}">${paymentLabel(method)}</span></small></div><div class="amount">${money(orderMoney(o))}</div><span>›</span></div>`;
   }).join('') : `<div class="empty"><div class="icon">🧾</div><strong>Todavía no cargaste pedidos</strong><div>Agregá el primer negocio de esta semana.</div></div>`;
+  const nextOrders=state.nextWeekOrders||[],nextQty=nextOrders.reduce((s,o)=>s+orderQtyTotal(o),0),nextRows=nextOrders.length?nextOrders.map(o=>`<div class="list-item clickable" onclick="showNextWeekOrder('${o.id}')"><div class="grow"><strong>${esc(business(o.businessId)?.name||'Negocio')}</strong><small>${orderQtyTotal(o)} postres · para la próxima semana</small></div><div class="amount">${money(orderMoney(o))}</div><span>›</span></div>`).join(''):`<div class="empty" style="padding:20px"><strong>No hay pedidos preparados</strong><div>Podés cargarlos ahora sin mezclarlos con esta semana.</div></div>`;
   return `${hero('Pedidos','Pedidos de negocios de la semana')}
     <div class="total-box"><div class="label">Total a cobrar</div><div class="big">${money(bt.money)}</div><div class="meta">${bt.qty} postres · ${w.orders.length} negocios</div></div>
     <div class="section card"><div class="money-line"><span>💵 Cobrado en efectivo</span><strong>${money(payments.cash)}</strong></div><div class="money-line"><span>📲 Cobrado por transferencia</span><strong>${money(payments.transfer)}</strong></div><div class="divider"></div><div class="money-line"><span>⏳ Pendiente de cobro</span><strong>${money(payments.pending)}</strong></div></div>
     <div class="section"><div class="section-title"><h3>Negocios</h3><button class="btn small ghost" onclick="openOrderModal()">+ Pedido</button></div><div class="list">${rows}</div></div>
+    <div class="section"><div class="section-title"><div><h3>Próxima semana</h3><small>${nextQty} postres preparados</small></div><button class="btn small primary" onclick="openOrderModal(null,'next')">+ Pedido próxima semana</button></div><div class="note" style="margin-bottom:10px">Estos pedidos quedan separados. Cuando crees la nueva semana, pasarán automáticamente a la producción.</div><div class="list">${nextRows}</div></div>
     <button class="fab" onclick="openOrderModal()">＋ Nuevo pedido</button>`;
 }
 
-function openOrderModal(orderId=null){
-  if(!ensureOpenWeek()) return;
-  const w=currentWeek();
+function openOrderModal(orderId=null,target='current'){
+  const isNext=target==='next';
+  if(!isNext&&!ensureOpenWeek()) return;
+  const w=currentWeek(),orders=isNext?(state.nextWeekOrders||[]):w.orders;
   if(!state.businesses.filter(b=>b.active).length){
     modal('Primero agregá un negocio',`<div class="empty"><div class="icon">🏪</div><strong>No hay negocios activos</strong><div>Creá un negocio y después cargá el pedido.</div></div><button class="btn primary wide" onclick="closeModal();go('businesses');openBusinessModal()">Agregar negocio</button>`); return;
   }
-  const order=orderId?w.orders.find(o=>o.id===orderId):null;
+  const order=orderId?orders.find(o=>o.id===orderId):null;
   const bOptions=state.businesses.filter(b=>b.active || b.id===order?.businessId).map(b=>`<option value="${b.id}" ${b.id===order?.businessId?'selected':''}>${esc(b.name)}</option>`).join('');
   const items={}; (order?.items||[]).forEach(i=>items[i.productId]=i);
   const rows=activeProducts().map(p=>{
     const old=items[p.id]; const pr=old?n(old.unitPrice):priceOf(p,'business');
     return `<div class="qty-row"><div class="qty-name"><strong>${esc(p.name)}</strong><small>${money(pr)} c/u</small></div><input class="qty-input order-qty" data-pid="${p.id}" data-price="${pr}" type="number" min="0" step="1" value="${old?.qty||''}" oninput="updateOrderModalTotal()"><div class="subtotal" id="sub_${p.id}">${old?.qty?money(n(old.qty)*pr):'—'}</div></div>`;
   }).join('');
-  modal(order?'Editar pedido':'Nuevo pedido',`
+  modal(order?(isNext?'Editar pedido próximo':'Editar pedido'):(isNext?'Pedido para la próxima semana':'Nuevo pedido'),`
+    ${isNext?'<div class="note" style="margin-bottom:12px">No se sumará a la semana actual. Pasará automáticamente cuando crees la nueva semana.</div>':''}
     <div class="field"><label>Negocio</label><select id="orderBusiness" class="select">${bOptions}</select></div>
     <div class="card" style="padding:10px 13px">${rows}</div>
     <div class="section"><div class="total-box"><div class="label">Total a cobrar</div><div class="big" id="orderModalMoney">${money(order?orderMoney(order):0)}</div><div class="meta" id="orderModalQty">${order?orderQtyTotal(order):0} postres</div></div></div>
-    <div class="form-row section"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="saveOrder('${orderId||''}')">Guardar pedido</button></div>`);
+    <div class="form-row section"><button class="btn ghost" onclick="closeModal()">Cancelar</button><button class="btn primary" onclick="saveOrder('${orderId||''}','${target}')">Guardar pedido</button></div>`);
   updateOrderModalTotal();
 }
 function updateOrderModalTotal(){
   let q=0,m=0; $$('.order-qty').forEach(inp=>{ const qty=int(inp.value), pr=n(inp.dataset.price); q+=qty; m+=qty*pr; const s=$(`#sub_${inp.dataset.pid}`); if(s)s.textContent=qty?money(qty*pr):'—'; });
   if($('#orderModalMoney')) $('#orderModalMoney').textContent=money(m); if($('#orderModalQty')) $('#orderModalQty').textContent=`${q} postres`;
 }
-function saveOrder(orderId=''){
-  const w=currentWeek(), businessId=$('#orderBusiness').value;
+function saveOrder(orderId='',target='current'){
+  const w=currentWeek(),isNext=target==='next',orders=isNext?(state.nextWeekOrders||[]):w.orders,businessId=$('#orderBusiness').value;
   const items=$$('.order-qty').map(inp=>({productId:inp.dataset.pid,qty:int(inp.value),unitPrice:n(inp.dataset.price)})).filter(x=>x.qty>0);
   if(!items.length){ showToast('Cargá al menos un postre'); return; }
-  let order=orderId?w.orders.find(o=>o.id===orderId):w.orders.find(o=>o.businessId===businessId);
+  let order=orderId?orders.find(o=>o.id===orderId):orders.find(o=>o.businessId===businessId);
   if(order){ order.businessId=businessId; order.items=items; order.updatedAt=new Date().toISOString(); }
-  else w.orders.push({id:uid('order'),businessId,items,paymentMethod:'pending',createdAt:new Date().toISOString()});
-  saveState(false); closeModal(); render(); showToast('Pedido guardado');
+  else orders.push({id:uid('order'),businessId,items,paymentMethod:'pending',createdAt:new Date().toISOString()});
+  if(isNext)state.nextWeekOrders=orders;
+  saveState(false); closeModal(); render(); showToast(isNext?'Pedido guardado para la próxima semana':'Pedido guardado');
 }
+function showNextWeekOrder(orderId){
+  const o=(state.nextWeekOrders||[]).find(x=>x.id===orderId);if(!o)return;const b=business(o.businessId);
+  const rows=o.items.map(i=>`<div class="money-line"><span>${i.qty} × ${esc(product(i.productId)?.name||'Postre')} · ${money(i.unitPrice)}</span><strong>${money(i.qty*i.unitPrice)}</strong></div>`).join('');
+  modal(`${b?.name||'Pedido'} · próxima semana`,`${rows}<div class="divider"></div><div class="total-box"><div class="label">Total del pedido</div><div class="big">${money(orderMoney(o))}</div><div class="meta">${orderQtyTotal(o)} postres</div></div><div class="note section">Todavía no afecta la producción, las ventas ni las ganancias actuales.</div><div class="grid grid-2 section"><button class="btn ghost" onclick="closeModal();openOrderModal('${o.id}','next')">✏️ Editar</button><button class="btn danger" onclick="deleteNextWeekOrder('${o.id}')">Eliminar</button></div>`);
+}
+function deleteNextWeekOrder(id){if(!confirm('¿Eliminar este pedido de la próxima semana?'))return;state.nextWeekOrders=(state.nextWeekOrders||[]).filter(o=>o.id!==id);saveState(false);closeModal();render();showToast('Pedido próximo eliminado');}
 function showOrder(orderId){
   const w=currentWeek(), o=w.orders.find(x=>x.id===orderId); if(!o)return; const b=business(o.businessId);
   const rows=o.items.map(i=>`<div class="money-line"><span>${i.qty} × ${esc(product(i.productId)?.name||'Postre')} · ${money(i.unitPrice)}</span><strong>${money(i.qty*i.unitPrice)}</strong></div>`).join(''),method=orderPaymentMethod(o);
@@ -931,7 +944,9 @@ function createWeek(){
   const date=$('#newWeekDate').value||todayISO(),label=$('#newWeekLabel').value.trim()||weekLabel(date);
   state.weeks.filter(w=>w.status==='open').forEach(w=>w.status='closed');
   const id=uid('week');
-  state.weeks.push({id,label,startDate:date,status:'open',orders:[],ownProduction:{},publicSales:[],publicOrders:[],productionStatus:{}});
+  const pedidosPreparados=(state.nextWeekOrders||[]).map(o=>({...JSON.parse(JSON.stringify(o)),paymentMethod:'pending',paidAt:null,moneyCycleId:null,movedToWeekAt:new Date().toISOString()}));
+  state.weeks.push({id,label,startDate:date,status:'open',orders:pedidosPreparados,ownProduction:{},publicSales:[],publicOrders:[],productionStatus:{}});
+  state.nextWeekOrders=[];
   state.currentWeekId=id;saveState(false);closeModal();currentView='dashboard';render();showToast('Nueva semana creada');
 }
 function closeCurrentWeek(){
