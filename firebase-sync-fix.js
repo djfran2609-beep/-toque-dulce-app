@@ -259,6 +259,9 @@
     if (!next || !next.products || !next.weeks) return;
     applyingRemote = true;
     state = clone(next);
+    // La nube puede traer una semana creada antes de que existiera openingStock.
+    // Recuperamos los sobrantes guardados en el cierre local antes de mostrarla.
+    if (typeof migrateOpeningStocks === "function") migrateOpeningStocks();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     if (doRender) render();
     applyingRemote = false;
