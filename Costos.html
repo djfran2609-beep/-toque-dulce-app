@@ -429,6 +429,7 @@
       restantes[pid]=restante;ventasPublico[pid]=cantidadVendida;preciosPublico[pid]=precioAnterior&&Object.prototype.hasOwnProperty.call(precioAnterior,pid)?numero(precioAnterior[pid]):precioPromedio;
     }
     datos.cierres[semana.id]={weekId:semana.id,label:semana.label||'Semana',startDate:semana.startDate||'',restantes,ventasPublico,preciosPublico,nombres,costosUnitarios,costosCongeladosEn:anterior?.costosCongeladosEn||new Date().toISOString(),guardadoEn:new Date().toISOString()};
+    semana.closingStock={...restantes};
     semana.status='closed';
     localStorage.setItem(CLAVE_GESTION,JSON.stringify(gestion));
     guardar();
