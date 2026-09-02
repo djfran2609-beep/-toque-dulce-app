@@ -324,7 +324,7 @@ function seedState(){
     otherExpenses:[],
     nextWeekOrders:[],
     moneyControl:{cycleId:null,cashOpening:0,transferOpening:0,startedAt:null},
-    weeks:[{id:weekId,label:weekLabel(),startDate:todayISO(),status:'open',orders:[],ownProduction:{},publicSales:[],publicOrders:[],productionStatus:{}}],
+    weeks:[{id:weekId,label:weekLabel(),startDate:todayISO(),status:'open',orders:[],ownProduction:{},openingStock:{},publicSales:[],publicOrders:[],productionStatus:{}}],
     currentWeekId:weekId
   };
 }
@@ -343,10 +343,25 @@ function loadState(){
   if(!Array.isArray(state.otherExpenses))state.otherExpenses=[];
   if(!Array.isArray(state.nextWeekOrders))state.nextWeekOrders=[];
   if(!state.moneyControl||typeof state.moneyControl!=='object')state.moneyControl={cycleId:null,cashOpening:0,transferOpening:0,startedAt:null};
+  migrateOpeningStocks();
   dedupeStateIngredients();
   saveState(false);
 }
 function saveState(render=true){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); if(render) render(); }
+function closingStockForWeek(weekId){
+  try{
+    const restantes=JSON.parse(localStorage.getItem('toqueDulce_calculadoraCostos_v1'))?.cierres?.[weekId]?.restantes||{},out={};
+    Object.entries(restantes).forEach(([pid,qty])=>{if(n(qty)>0)out[pid]=n(qty);});
+    return out;
+  }catch(_){return {};}
+}
+function migrateOpeningStocks(){
+  (state.weeks||[]).forEach((week,index)=>{
+    if(week.openingStock&&typeof week.openingStock==='object'&&!Array.isArray(week.openingStock))return;
+    const previous=index>0?state.weeks[index-1]:null;
+    week.openingStock=previous?closingStockForWeek(previous.id):{};
+  });
+}
 function currentWeek(){ return state.weeks.find(w=>w.id===state.currentWeekId) || state.weeks.find(w=>w.status==='open') || state.weeks[0]; }
 function product(id){ return state.products.find(p=>p.id===id); }
 function ingredient(id){ return state.ingredients.find(i=>i.id===id); }
@@ -380,7 +395,8 @@ function ownTotals(week=currentWeek()){
 function salesTotals(week=currentWeek()) { return {qty:week.publicSales.reduce((s,x)=>s+n(x.qty),0),money:week.publicSales.reduce((s,x)=>s+n(x.qty)*n(x.unitPrice),0)}; }
 function stockByProduct(week=currentWeek()){
   const out={};
-  Object.entries(week.ownProduction||{}).forEach(([pid,v])=>out[pid]=n(v.qty));
+  Object.entries(week.openingStock||{}).forEach(([pid,qty])=>out[pid]=n(qty));
+  Object.entries(week.ownProduction||{}).forEach(([pid,v])=>out[pid]=(out[pid]||0)+n(v.qty));
   week.publicSales.forEach(s=>out[s.productId]=(out[s.productId]||0)-n(s.qty));
   return out;
 }
@@ -608,7 +624,7 @@ function renderPublic(){
   const tabs=`<div class="segmented" style="width:100%;margin-top:14px"><button class="${publicTab==='deliveries'?'active':''}" onclick="setPublicTab('deliveries')">REPARTOS</button><button class="${publicTab==='stock'?'active':''}" onclick="setPublicTab('stock')">STOCK Y MOVIMIENTOS</button></div>`;
   const header=`${hero('Repartos y ventas','Pedidos al público, stock y movimientos',`<button class="btn small primary" onclick="openPublicOrderModal()">+ Pedido</button>`)}<div class="grid grid-3"><div class="card stat-card"><div><div class="eyebrow">Pendientes</div><div class="value">${pending}</div></div><div class="sub">repartos</div></div><div class="card stat-card"><div><div class="eyebrow">Stock</div><div class="value">${qtyFmt(stockTotal)}</div></div><div class="sub">postres</div></div><div class="card stat-card"><div><div class="eyebrow">Vendido</div><div class="value">${money(st.money)}</div></div><div class="sub">${qtyFmt(st.qty)} postres</div></div></div>${tabs}`;
   if(publicTab==='deliveries')return `${header}${renderPublicOrders()}`;
-  const rows=activeProducts().map(p=>{const q=Math.max(0,n(stock[p.id]));return `<div class="list-item"><div class="grow"><strong>${esc(p.name)}</strong><small>${money(priceOf(p,'public'))} c/u</small></div><span class="badge ${q>0?'ok':'gray'}">${qtyFmt(q)} disponibles</span></div>`;}).join('');
+  const rows=activeProducts().map(p=>{const q=Math.max(0,n(stock[p.id])),arrastre=n(w.openingStock?.[p.id]);return `<div class="list-item"><div class="grow"><strong>${esc(p.name)}</strong><small>${money(priceOf(p,'public'))} c/u${arrastre>0?` · ${qtyFmt(arrastre)} pasaron de la semana anterior`:''}</small></div><span class="badge ${q>0?'ok':'gray'}">${qtyFmt(q)} disponibles</span></div>`;}).join('');
   const movements=[
     ...w.publicSales.filter(s=>!s.publicOrderId).map(s=>({type:'sale',at:s.date||'',sale:s})),
     ...publicOrdersOf(w).filter(o=>o.delivered).map(o=>({type:'publicOrder',at:o.deliveredAt||o.updatedAt||o.createdAt||'',order:o}))
@@ -945,7 +961,8 @@ function createWeek(){
   state.weeks.filter(w=>w.status==='open').forEach(w=>w.status='closed');
   const id=uid('week');
   const pedidosPreparados=(state.nextWeekOrders||[]).map(o=>({...JSON.parse(JSON.stringify(o)),paymentMethod:'pending',paidAt:null,moneyCycleId:null,movedToWeekAt:new Date().toISOString()}));
-  state.weeks.push({id,label,startDate:date,status:'open',orders:pedidosPreparados,ownProduction:{},publicSales:[],publicOrders:[],productionStatus:{}});
+  const sobrantesAnteriores=closingStockForWeek(activa?.id);
+  state.weeks.push({id,label,startDate:date,status:'open',orders:pedidosPreparados,ownProduction:{},openingStock:sobrantesAnteriores,publicSales:[],publicOrders:[],productionStatus:{}});
   state.nextWeekOrders=[];
   state.currentWeekId=id;saveState(false);closeModal();currentView='dashboard';render();showToast('Nueva semana creada');
 }
