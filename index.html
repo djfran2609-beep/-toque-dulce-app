@@ -348,20 +348,22 @@ function loadState(){
   saveState(false);
 }
 function saveState(render=true){ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); if(render) render(); }
-function closingStockForWeek(weekId){
+function closingStockSnapshot(weekId){
   try{
-    const restantes=JSON.parse(localStorage.getItem('toqueDulce_calculadoraCostos_v1'))?.cierres?.[weekId]?.restantes||{},out={};
-    Object.entries(restantes).forEach(([pid,qty])=>{if(n(qty)>0)out[pid]=n(qty);});
+    const cierre=JSON.parse(localStorage.getItem('toqueDulce_calculadoraCostos_v1'))?.cierres?.[weekId];
+    if(!cierre||!cierre.restantes||typeof cierre.restantes!=='object')return null;
+    const out={};Object.entries(cierre.restantes).forEach(([pid,qty])=>out[pid]=Math.max(0,n(qty)));
     return out;
-  }catch(_){return {};}
+  }catch(_){return null;}
 }
+function closingStockForWeek(weekId){return closingStockSnapshot(weekId)||{};}
 function migrateOpeningStocks(){
   (state.weeks||[]).forEach((week,index)=>{
     const previous=index>0?state.weeks[index-1]:null;
-    const existing=week.openingStock&&typeof week.openingStock==='object'&&!Array.isArray(week.openingStock)?week.openingStock:{},stored=previous?.closingStock&&typeof previous.closingStock==='object'?previous.closingStock:{},localRecovered=previous?closingStockForWeek(previous.id):{},recovered=Object.values(stored).some(qty=>n(qty)>0)?stored:localRecovered;
-    if(previous&&!Object.values(stored).some(qty=>n(qty)>0)&&Object.values(localRecovered).some(qty=>n(qty)>0))previous.closingStock={...localRecovered};
-    const hasExisting=Object.values(existing).some(qty=>n(qty)>0),hasRecovered=Object.values(recovered).some(qty=>n(qty)>0);
-    week.openingStock=!hasExisting&&hasRecovered?recovered:existing;
+    const existing=week.openingStock&&typeof week.openingStock==='object'&&!Array.isArray(week.openingStock)?week.openingStock:{},hasStored=Boolean(previous&&Object.prototype.hasOwnProperty.call(previous,'closingStock')&&previous.closingStock&&typeof previous.closingStock==='object'),stored=hasStored?previous.closingStock:{},localSnapshot=previous?closingStockSnapshot(previous.id):null;
+    if(localSnapshot!==null){previous.closingStock={...localSnapshot};week.openingStock={...localSnapshot};}
+    else if(hasStored)week.openingStock={...stored};
+    else week.openingStock=existing;
   });
 }
 function currentWeek(){ return state.weeks.find(w=>w.id===state.currentWeekId) || state.weeks.find(w=>w.status==='open') || state.weeks[0]; }
