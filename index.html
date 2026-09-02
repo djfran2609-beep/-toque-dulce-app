@@ -358,7 +358,8 @@ function closingStockForWeek(weekId){
 function migrateOpeningStocks(){
   (state.weeks||[]).forEach((week,index)=>{
     const previous=index>0?state.weeks[index-1]:null;
-    const existing=week.openingStock&&typeof week.openingStock==='object'&&!Array.isArray(week.openingStock)?week.openingStock:{},recovered=previous?closingStockForWeek(previous.id):{};
+    const existing=week.openingStock&&typeof week.openingStock==='object'&&!Array.isArray(week.openingStock)?week.openingStock:{},stored=previous?.closingStock&&typeof previous.closingStock==='object'?previous.closingStock:{},localRecovered=previous?closingStockForWeek(previous.id):{},recovered=Object.values(stored).some(qty=>n(qty)>0)?stored:localRecovered;
+    if(previous&&!Object.values(stored).some(qty=>n(qty)>0)&&Object.values(localRecovered).some(qty=>n(qty)>0))previous.closingStock={...localRecovered};
     const hasExisting=Object.values(existing).some(qty=>n(qty)>0),hasRecovered=Object.values(recovered).some(qty=>n(qty)>0);
     week.openingStock=!hasExisting&&hasRecovered?recovered:existing;
   });
@@ -502,7 +503,7 @@ function renderDashboard(){
     </div>
     <div class="section"><div class="section-title"><h3>Accesos rápidos</h3></div><div class="action-grid">
       ${action('🗓️','Nueva semana','Cerrar y empezar otra',"openNewWeekModal()")}
-      ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=12&vista=ganancias'",'profit')}
+      ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=13&vista=ganancias'",'profit')}
       ${action('🧾','Nuevo pedido','Cargar un negocio',"openOrderModal()")}
       ${action('🍓','Producción propia','Lo que venden ustedes',"go('own')")}
       ${action('📍','Repartos y ventas','Pedidos, stock y movimientos',"setPublicTab('deliveries')")}
@@ -946,7 +947,7 @@ function weekShouldClose(w){
   const inicio=new Date(`${w.startDate}T12:00:00`),hoy=new Date();
   return Number.isFinite(inicio.getTime())&&Math.floor((hoy-inicio)/86400000)>=6;
 }
-function openWeekClose(id){window.location.href='Costos.html?v=12&cerrar='+encodeURIComponent(id);}
+function openWeekClose(id){window.location.href='Costos.html?v=13&cerrar='+encodeURIComponent(id);}
 function openNewWeekModal(){
   const activa=currentWeek();
   if(activa?.status==='open'&&weekHasActivity(activa)&&!weekHasCostClose(activa.id)){
@@ -962,7 +963,7 @@ function createWeek(){
   state.weeks.filter(w=>w.status==='open').forEach(w=>w.status='closed');
   const id=uid('week');
   const pedidosPreparados=(state.nextWeekOrders||[]).map(o=>({...JSON.parse(JSON.stringify(o)),paymentMethod:'pending',paidAt:null,moneyCycleId:null,movedToWeekAt:new Date().toISOString()}));
-  const sobrantesAnteriores=closingStockForWeek(activa?.id);
+  const sobrantesGuardados=activa?.closingStock&&typeof activa.closingStock==='object'?activa.closingStock:{},sobrantesAnteriores=Object.values(sobrantesGuardados).some(qty=>n(qty)>0)?{...sobrantesGuardados}:closingStockForWeek(activa?.id);
   state.weeks.push({id,label,startDate:date,status:'open',orders:pedidosPreparados,ownProduction:{},openingStock:sobrantesAnteriores,publicSales:[],publicOrders:[],productionStatus:{}});
   state.nextWeekOrders=[];
   state.currentWeekId=id;saveState(false);closeModal();currentView='dashboard';render();showToast('Nueva semana creada');
@@ -990,7 +991,7 @@ function resetApp(){if(!confirm('¿Restablecer toda la app? Esto elimina los dat
 function renderMore(){
   const w=currentWeek(),avisoCierre=weekShouldClose(w)?`<div class="note" style="margin-bottom:12px"><strong>Semana pendiente de finalizar</strong><br>Completá el cierre para guardar la ganancia correcta.<button class="btn primary wide" style="margin-top:10px" onclick="openWeekClose('${w.id}')">Finalizar semana</button></div>`:'';
   return `${hero('Más','Administración de la app')}${avisoCierre}<div class="action-grid">
-    ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=12&vista=ganancias'",'profit')}
+    ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=13&vista=ganancias'",'profit')}
     ${action('🏪','Negocios','Agregar o editar clientes',"go('businesses')")}
     ${action('🍰','Postres y recetas','Variedades y cantidades',"go('products')")}
     ${action('🥛','Ingredientes','Precio, envase y unidad',"go('ingredients')")}
