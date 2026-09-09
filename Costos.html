@@ -154,6 +154,7 @@
   const escapar = texto => String(texto ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   let datos = cargar();
   let gestion = cargarGestion();
+  let cierreEnEdicion = false;
 
   function mesActual(){const hoy=new Date();return `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;}
   function claveNombre(texto){return String(texto||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
@@ -177,6 +178,12 @@
     try{const valor=JSON.parse(localStorage.getItem(CLAVE_GESTION));if(valor&&Array.isArray(valor.products)&&Array.isArray(valor.weeks))return valor;}catch(e){}
     return null;
   }
+  function renderDesdeSincronizacion(){
+    // Mientras se completan los sobrantes, Firebase puede actualizar los datos
+    // internos pero no debe reconstruir los inputs ni cambiar sus valores.
+    if(cierreEnEdicion)return;
+    render();
+  }
   function guardar(opciones={}){
     localStorage.setItem(CLAVE,JSON.stringify(datos));
     render();
@@ -192,7 +199,7 @@
       unificarCatalogo();
       const reparado=repararCostosHistoricosPendientes();
       if(reparado){localStorage.setItem(CLAVE,JSON.stringify(datos));avisarReparacionParaSincronizar();}
-      render();
+      renderDesdeSincronizacion();
     },
     applyState:nuevo=>{
       datos=normalizar(JSON.parse(JSON.stringify(nuevo||{})));
@@ -200,7 +207,7 @@
       unificarCatalogo();
       const reparado=repararCostosHistoricosPendientes();
       localStorage.setItem(CLAVE,JSON.stringify(datos));
-      render();
+      renderDesdeSincronizacion();
       if(reparado)avisarReparacionParaSincronizar();
     }
   };
@@ -374,7 +381,7 @@
   window.borrarReceta=id=>{if(confirm('¿Eliminar este postre y su receta?')){datos.recetas=datos.recetas.filter(r=>r.id!==id);guardar();}};
 
   $('mesGanancias').addEventListener('change',e=>{datos.mesActivo=e.target.value||mesActual();guardar();});
-  $('semanaCierre').addEventListener('change',e=>{datos.semanaCierreId=e.target.value;localStorage.setItem(CLAVE,JSON.stringify(datos));renderGanancias();});
+  $('semanaCierre').addEventListener('change',e=>{cierreEnEdicion=false;datos.semanaCierreId=e.target.value;localStorage.setItem(CLAVE,JSON.stringify(datos));renderGanancias();});
   $('vendiTodo').addEventListener('click',()=>{document.querySelectorAll('.sobrante-input').forEach(i=>i.value=0);actualizarCierreVista();});
   $('guardarCierre').addEventListener('click',guardarCierreSemanal);
   $('formEgreso').addEventListener('submit',e=>{
@@ -402,6 +409,7 @@
     }).filter(f=>f.disponibles>0||Object.prototype.hasOwnProperty.call(actual?.restantes||{},f.p.id));
   }
   function actualizarCierreVista(){
+    cierreEnEdicion=true;
     document.querySelectorAll('.sobrante-input').forEach(inp=>{
       const disponible=numero(inp.dataset.disponible),restante=Math.max(0,numero(inp.value));
       const salida=document.getElementById(`vendidos_${inp.dataset.pid}`);if(salida)salida.textContent=formato(Math.max(0,disponible-restante));
@@ -433,6 +441,7 @@
     semana.closingStockUpdatedAt=new Date().toISOString();
     semana.status='closed';
     localStorage.setItem(CLAVE_GESTION,JSON.stringify(gestion));
+    cierreEnEdicion=false;
     guardar();
     window.dispatchEvent(new CustomEvent('toqueDulceSemanaFinalizada',{detail:{weekId:semana.id}}));
     avisar('Semana finalizada y ganancias guardadas');
