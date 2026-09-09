@@ -177,14 +177,6 @@
     try{const valor=JSON.parse(localStorage.getItem(CLAVE_GESTION));if(valor&&Array.isArray(valor.products)&&Array.isArray(valor.weeks))return valor;}catch(e){}
     return null;
   }
-  function mismoContenido(a,b){try{return JSON.stringify(a)===JSON.stringify(b);}catch(e){return false;}}
-  function renderDesdeSincronizacion(){
-    // En iPhone, reemplazar el HTML de un input enfocado cierra el teclado y
-    // devuelve el valor anterior. Mientras se cargan sobrantes actualizamos los
-    // datos internos, pero dejamos los casilleros intactos hasta que se guarde.
-    if(document.activeElement?.classList?.contains('sobrante-input'))return;
-    render();
-  }
   function guardar(opciones={}){
     localStorage.setItem(CLAVE,JSON.stringify(datos));
     render();
@@ -195,24 +187,20 @@
     getGestionState:()=>gestion?JSON.parse(JSON.stringify(gestion)):null,
     applyGestionState:nuevo=>{
       if(!nuevo||!Array.isArray(nuevo.ingredients)||!Array.isArray(nuevo.products))return;
-      const gestionNueva=JSON.parse(JSON.stringify(nuevo));
-      if(mismoContenido(gestion,gestionNueva))return;
-      gestion=gestionNueva;
+      gestion=JSON.parse(JSON.stringify(nuevo));
       localStorage.setItem(CLAVE_GESTION,JSON.stringify(gestion));
       unificarCatalogo();
       const reparado=repararCostosHistoricosPendientes();
       if(reparado){localStorage.setItem(CLAVE,JSON.stringify(datos));avisarReparacionParaSincronizar();}
-      renderDesdeSincronizacion();
+      render();
     },
     applyState:nuevo=>{
-      const datosNuevos=normalizar(JSON.parse(JSON.stringify(nuevo||{})));
-      if(mismoContenido(datos,datosNuevos))return;
-      datos=datosNuevos;
+      datos=normalizar(JSON.parse(JSON.stringify(nuevo||{})));
       gestion=cargarGestion();
       unificarCatalogo();
       const reparado=repararCostosHistoricosPendientes();
       localStorage.setItem(CLAVE,JSON.stringify(datos));
-      renderDesdeSincronizacion();
+      render();
       if(reparado)avisarReparacionParaSincronizar();
     }
   };
@@ -598,17 +586,10 @@
         sumar(pid,nombre,'publico',cantidad);
       });
     }else{
-      // Los pedidos de Reparto son la fuente de verdad para el ranking en vivo.
-      // publicSales también guarda una copia de esos pedidos para descontar stock,
-      // por eso acá solo sumamos las ventas sueltas y evitamos contarlas dos veces.
-      (semana.publicSales||[]).filter(v=>!v.publicOrderId).forEach(v=>{
+      (semana.publicSales||[]).forEach(v=>{
         const p=productoGestion(v.productId),nombre=p?.name||'Postre';
         sumar(v.productId,nombre,'publico',v.qty);
       });
-      (semana.publicOrders||[]).forEach(o=>(o.items||[]).forEach(i=>{
-        const p=productoGestion(i.productId),nombre=p?.name||'Postre';
-        sumar(i.productId,nombre,'publico',i.qty);
-      }));
     }
     return Object.values(mapa).map(v=>({...v,total:v.negocio+v.publico})).filter(v=>v.total>0).sort((a,b)=>b.total-a.total||a.nombre.localeCompare(b.nombre));
   }
@@ -619,7 +600,7 @@
     $('listaTops').innerHTML=semanas.length?semanas.map(semana=>{
       const ventas=ventasParaTopDeSemana(semana),total=ventas.reduce((s,v)=>s+v.total,0),cierre=datos.cierres[semana.id];
       const filas=ventas.length?`<table class="tabla-simple"><thead><tr><th># · Postre</th><th>Negocio</th><th>Público</th><th>Total</th></tr></thead><tbody>${ventas.map((v,i)=>`<tr><td><strong>${i+1}. ${escapar(v.nombre)}</strong></td><td>${formato(v.negocio)}</td><td>${formato(v.publico)}</td><td><strong>${formato(v.total)}</strong></td></tr>`).join('')}</tbody></table>`:'<div class="lista-vacia">Todavía no hay ventas contabilizadas en esta semana.</div>';
-      return `<div class="receta-card"><div class="receta-top"><div><div class="nombre">${escapar(semana.label||semana.startDate||'Semana')}</div><div class="detalle">${cierre?'Cierre confirmado':'Semana en curso · se actualiza al cargar cada pedido'}</div></div><div class="total">${formato(total)}</div></div><div class="detalle" style="margin:3px 0 10px">postres vendidos</div>${filas}</div>`;
+      return `<div class="receta-card"><div class="receta-top"><div><div class="nombre">${escapar(semana.label||semana.startDate||'Semana')}</div><div class="detalle">${cierre?'Cierre confirmado':'Semana en curso · el público se completa al cerrar'}</div></div><div class="total">${formato(total)}</div></div><div class="detalle" style="margin:3px 0 10px">postres vendidos</div>${filas}</div>`;
     }).join(''):'<div class="lista-vacia">Todavía no hay semanas cargadas.</div>';
   }
 
