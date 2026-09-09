@@ -177,6 +177,14 @@
     try{const valor=JSON.parse(localStorage.getItem(CLAVE_GESTION));if(valor&&Array.isArray(valor.products)&&Array.isArray(valor.weeks))return valor;}catch(e){}
     return null;
   }
+  function mismoContenido(a,b){try{return JSON.stringify(a)===JSON.stringify(b);}catch(e){return false;}}
+  function renderDesdeSincronizacion(){
+    // En iPhone, reemplazar el HTML de un input enfocado cierra el teclado y
+    // devuelve el valor anterior. Mientras se cargan sobrantes actualizamos los
+    // datos internos, pero dejamos los casilleros intactos hasta que se guarde.
+    if(document.activeElement?.classList?.contains('sobrante-input'))return;
+    render();
+  }
   function guardar(opciones={}){
     localStorage.setItem(CLAVE,JSON.stringify(datos));
     render();
@@ -187,20 +195,24 @@
     getGestionState:()=>gestion?JSON.parse(JSON.stringify(gestion)):null,
     applyGestionState:nuevo=>{
       if(!nuevo||!Array.isArray(nuevo.ingredients)||!Array.isArray(nuevo.products))return;
-      gestion=JSON.parse(JSON.stringify(nuevo));
+      const gestionNueva=JSON.parse(JSON.stringify(nuevo));
+      if(mismoContenido(gestion,gestionNueva))return;
+      gestion=gestionNueva;
       localStorage.setItem(CLAVE_GESTION,JSON.stringify(gestion));
       unificarCatalogo();
       const reparado=repararCostosHistoricosPendientes();
       if(reparado){localStorage.setItem(CLAVE,JSON.stringify(datos));avisarReparacionParaSincronizar();}
-      render();
+      renderDesdeSincronizacion();
     },
     applyState:nuevo=>{
-      datos=normalizar(JSON.parse(JSON.stringify(nuevo||{})));
+      const datosNuevos=normalizar(JSON.parse(JSON.stringify(nuevo||{})));
+      if(mismoContenido(datos,datosNuevos))return;
+      datos=datosNuevos;
       gestion=cargarGestion();
       unificarCatalogo();
       const reparado=repararCostosHistoricosPendientes();
       localStorage.setItem(CLAVE,JSON.stringify(datos));
-      render();
+      renderDesdeSincronizacion();
       if(reparado)avisarReparacionParaSincronizar();
     }
   };
