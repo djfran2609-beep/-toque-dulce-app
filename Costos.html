@@ -169,13 +169,53 @@
   const formato = valor => new Intl.NumberFormat('es-AR',{maximumFractionDigits:4}).format(numero(valor));
   const escapar = texto => String(texto ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   let datos = cargar();
-  let gestion = cargarGestion();
+  let gestion = migrarCremasPreparadasGestion(cargarGestion());
   let cierreEnEdicion = false;
   let correccionEnEdicion = null;
   let correccionVista = null;
 
   function mesActual(){const hoy=new Date();return `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;}
   function claveNombre(texto){return String(texto||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
+  function migrarCremasPreparadasGestion(valor){
+    const next=valor&&typeof valor==='object'?JSON.parse(JSON.stringify(valor)):valor;
+    if(!next||!Array.isArray(next.ingredients)||!Array.isArray(next.products))return next;
+    const ensure=(id,name,price,qty,unit)=>{
+      let item=next.ingredients.find(i=>i.id===id)||next.ingredients.find(i=>claveNombre(i.name)===claveNombre(name));
+      if(!item){item={id,name,purchasePrice:price,purchaseQty:qty,unit,active:true};next.ingredients.push(item);}
+      item.name=name;item.purchasePrice=price;item.purchaseQty=qty;item.unit=unit;item.active=true;delete item.note;
+      return item.id;
+    };
+    let crema=next.ingredients.find(i=>i.id==='ing_crema')||next.ingredients.find(i=>claveNombre(i.name)==='crema');
+    if(!crema){crema={id:'ing_crema',name:'Crema',purchasePrice:0,purchaseQty:1000,unit:'g',active:true};next.ingredients.push(crema);}
+    const cremaId=crema.id;
+    const dolcaId=ensure('ing_pasta_dolca','Pasta Dolca',7500,450,'g');
+    const bonId=ensure('ing_pasta_bon','Pasta Bon o Bon',8000,280,'g');
+    const cadburyId=ensure('ing_pasta_cadbury','Pasta Cadbury',7500,450,'g');
+    const preparados=next.ingredients.filter(i=>{const k=claveNombre(i.name);return k.includes('crema')&&k.includes('preparada');});
+    const ids=new Set(preparados.map(i=>i.id));
+    ['ing_crema_oreo','ing_crema_choco','ing_crema_bon','ing_crema_dolca','ing_crema_cadbury','ing_crema_dos'].forEach(id=>ids.add(id));
+    const chocoIds=new Set(preparados.filter(i=>claveNombre(i.name).includes('chocotorta')).map(i=>i.id));chocoIds.add('ing_crema_choco');
+    const agrupar=rows=>{const m=new Map();(rows||[]).forEach(r=>{const q=numero(r.qty);if(r.ingredientId&&q>0)m.set(r.ingredientId,(m.get(r.ingredientId)||0)+q);});return [...m].map(([ingredientId,qty])=>({ingredientId,qty}));};
+    next.products.forEach(p=>{
+      const rows=[];
+      (p.recipe||[]).forEach(r=>{
+        if(!ids.has(r.ingredientId)){rows.push(r);return;}
+        const q=numero(r.qty);
+        if(p.id==='p_choco'&&chocoIds.has(r.ingredientId))rows.push({ingredientId:'ing_dulce',qty:q*.5},{ingredientId:'ing_queso',qty:q*.25},{ingredientId:cremaId,qty:q*.25});
+        else rows.push({ingredientId:cremaId,qty:q});
+      });
+      p.recipe=agrupar(rows);
+    });
+    const forzar=(pid,pastaId,pastaQty)=>{
+      const p=next.products.find(x=>x.id===pid);if(!p)return;
+      const rows=(p.recipe||[]).filter(r=>r.ingredientId!==cremaId&&r.ingredientId!==pastaId);
+      rows.push({ingredientId:cremaId,qty:60},{ingredientId:pastaId,qty:pastaQty});
+      p.recipe=agrupar(rows);
+    };
+    forzar('p_bon',bonId,11.2);forzar('p_banana',dolcaId,18);forzar('p_cadbury',cadburyId,18);
+    next.ingredients=next.ingredients.filter(i=>!ids.has(i.id));
+    return next;
+  }
   function normalizar(valor){
     const base=valor&&typeof valor==='object'?valor:{};
     if(!Array.isArray(base.ingredientes))base.ingredientes=[];
@@ -210,9 +250,10 @@
   window.toqueDulceCostosSync={
     getState:()=>JSON.parse(JSON.stringify(datos)),
     getGestionState:()=>gestion?JSON.parse(JSON.stringify(gestion)):null,
+    sanitizeGestionState:nuevo=>migrarCremasPreparadasGestion(nuevo),
     applyGestionState:nuevo=>{
       if(!nuevo||!Array.isArray(nuevo.ingredients)||!Array.isArray(nuevo.products))return;
-      gestion=JSON.parse(JSON.stringify(nuevo));
+      gestion=migrarCremasPreparadasGestion(nuevo);
       localStorage.setItem(CLAVE_GESTION,JSON.stringify(gestion));
       unificarCatalogo();
       const reparado=repararCostosHistoricosPendientes();
@@ -221,7 +262,7 @@
     },
     applyState:nuevo=>{
       datos=normalizar(JSON.parse(JSON.stringify(nuevo||{})));
-      gestion=cargarGestion();
+      gestion=migrarCremasPreparadasGestion(cargarGestion());
       unificarCatalogo();
       const reparado=repararCostosHistoricosPendientes();
       localStorage.setItem(CLAVE,JSON.stringify(datos));
@@ -287,7 +328,12 @@
   return [...agrupados].map(([ingredientId,qty])=>({ingredientId,qty}));
 }
   function unificarCatalogo(){
+  gestion=migrarCremasPreparadasGestion(gestion);
   if(!gestion||!Array.isArray(gestion.ingredients)||!Array.isArray(gestion.products))return false;
+  const preparadosCostos=new Set(datos.ingredientes.filter(item=>{const clave=claveNombre(item.nombre);return clave.includes('crema')&&clave.includes('preparada');}).map(item=>item.id));
+  ['ing_crema_oreo','ing_crema_choco','ing_crema_bon','ing_crema_dolca','ing_crema_cadbury','ing_crema_dos'].forEach(id=>preparadosCostos.add(id));
+  datos.ingredientes=datos.ingredientes.filter(item=>!preparadosCostos.has(item.id));
+  datos.recetas.forEach(receta=>{receta.items=(receta.items||[]).filter(item=>!preparadosCostos.has(item.ingredienteId));});
   const primeraVez=!datos.catalogoUnificadoV1,remap=new Map(),porNombre=new Map(),canonicos=[];
   gestion.ingredients.forEach(item=>{
     const clave=claveIngredienteUnificado(item.name);
@@ -775,6 +821,6 @@
   if(cierreSolicitado)setTimeout(()=>document.getElementById('cierreSemanal')?.scrollIntoView({behavior:'smooth',block:'start'}),120);
 })();
 </script>
-<script src="firebase-costos-sync.js?v=3" defer></script>
+<script src="firebase-costos-sync.js?v=4" defer></script>
 </body>
 </html>
