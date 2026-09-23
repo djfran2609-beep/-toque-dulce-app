@@ -521,7 +521,7 @@
       const cierre=datos.cierres[actual.weekId],fecha=new Date().toISOString();
       const nuevo={...cierre,costosUnitarios:actual.costosUnitarios,guardadoEn:fecha,correccionesCostos:[...(cierre.correccionesCostos||[]),{...actual.registro,fecha}]};
       // Solo cambia este cierre. No toca gestión, recetas ni precios actuales.
-      const siguientes={...datos,cierres:{...datos.cierres,[actual.weekId]:nuevo}};
+      const siguientes={...datos,semanaCierreId:actual.weekId,cierres:{...datos.cierres,[actual.weekId]:nuevo}};
       localStorage.setItem(CLAVE,JSON.stringify(siguientes));datos=siguientes;
       cerrarCorreccion();render();window.dispatchEvent(new CustomEvent('toqueDulceCostosChanged'));
       avisar('Costo corregido. Ganancias semanal y mensual actualizadas.');
