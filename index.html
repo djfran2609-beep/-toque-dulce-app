@@ -10,7 +10,7 @@
   <meta name="description" content="Gestión de pedidos y producción para Toque Dulce" />
   <link rel="manifest" href="manifest.webmanifest?v=2" /> 
   <link rel="apple-touch-icon" href="icon-512.png.PNG?v=2">
-  <script src="recipe-import.js?v=1" defer></script>
+  <script src="recipe-import.js?v=2" defer></script>
   <script src="firebase-sync-fix.js?v=4" defer></script>
       <style>
   
@@ -982,6 +982,7 @@ function closeCurrentWeek(){
 
 function renderSettings(){
   return `${hero('Configuración','Precios generales y datos')}<div class="card"><div class="field"><label>Precio general negocios</label><input id="setBiz" class="input" type="number" value="${state.settings.businessPrice}"></div><div class="field"><label>Precio general público</label><input id="setPub" class="input" type="number" value="${state.settings.publicPrice}"></div><button class="btn primary wide" onclick="saveSettings()">Guardar precios</button></div>
+    <div class="section"><button class="btn primary wide" onclick="importRecipeLink()">Aplicar corrección del enlace</button></div>
     <div class="section"><button class="btn primary wide" onclick="document.getElementById('recipeImportFile').click()">Cargar recetas desde archivo</button><input id="recipeImportFile" type="file" accept="application/json" style="display:none" onchange="importRecipeFile(this.files[0])"></div>
     <div class="section"><div class="section-title"><h3>Copia de seguridad</h3></div><div class="grid grid-2"><button class="btn ghost" onclick="exportBackup()">⬇️ Exportar datos</button><button class="btn ghost" onclick="$('#importFile').click()">⬆️ Importar datos</button></div><input id="importFile" type="file" accept="application/json" style="display:none" onchange="importBackup(this.files[0])"></div>
     <div class="section"><div class="section-title"><h3>Instalar en iPhone</h3></div><div class="note">Abrí esta app desde Safari, tocá Compartir y elegí “Agregar a pantalla de inicio”. Después se abre como una app independiente.</div></div>

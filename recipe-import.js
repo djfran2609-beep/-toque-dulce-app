@@ -4,6 +4,9 @@
   let pending=null;
   const copy=value=>JSON.parse(JSON.stringify(value));
   const signature=p=>JSON.stringify((p?.recipe||[]).map(i=>[i.ingredientId,Number(i.qty)]).sort((a,b)=>a[0].localeCompare(b[0])));
+  window.importRecipeLink=()=>{
+    try { const value=new URLSearchParams(location.hash.slice(1)).get("recetas"); if(!value)throw Error("Abrí el enlace de corrección que te pasé."); window.importRecipeFile({text:async()=>value}); } catch(error){showToast(error.message);}
+  };
   window.importRecipeFile=async file=>{
     if(!file)return;
     try{
@@ -48,7 +51,15 @@
           return {ingredientId,qty};
         });
         if(!recipe.length)throw Error('La receta está vacía.');
-        target.recipe=recipe;target.notes=p.notes||target.notes;
+        if(p.replaceIngredientIds){
+          const removed=new Set([...p.replaceIngredientIds,...recipe.map(i=>i.ingredientId)]);
+          target.recipe=[...(target.recipe||[]).filter(i=>!removed.has(i.ingredientId)),...recipe];
+        }else target.recipe=recipe;
+        target.notes=p.notes||target.notes;
+      }
+      for(const id of patch.retireIngredientIds||[]){
+        if(next.products.some(p=>(p.recipe||[]).some(i=>i.ingredientId===id)))throw Error('Una crema preparada todavía se usa en otra receta. Revisala antes de continuar.');
+        next.ingredients=next.ingredients.filter(i=>i.id!==id);
       }
       // Respaldo local previo y guardado habitual para sincronizar entre teléfonos.
       localStorage.setItem('toqueDulce_antes_importar_recetas_v1',JSON.stringify(state));
