@@ -311,7 +311,8 @@
     try {
       const first = await firebaseFns.getDoc(cloudRef);
       const remoteAppRaw = first.data()?.state, localApp = bridge.getGestionState?.();
-      const mergedApp = mergeAppCatalog(localApp, remoteAppRaw);
+      const mergedAppRaw = mergeAppCatalog(localApp, remoteAppRaw);
+      const mergedApp = bridge.sanitizeGestionState ? bridge.sanitizeGestionState(mergedAppRaw) : mergedAppRaw;
       if (mergedApp) {
         bridge.applyGestionState?.(mergedApp);
         if (!same(mergedApp, remoteAppRaw)) {
@@ -341,8 +342,18 @@
       cloudReady = true;
       unsubscribeSnapshot?.();
       unsubscribeSnapshot = firebaseFns.onSnapshot(cloudRef, snapshot => {
-        const snapshotData = snapshot.data(), remoteAppNow = snapshotData?.state;
-        if (remoteAppNow) bridge.applyGestionState?.(remoteAppNow);
+        const snapshotData = snapshot.data(), remoteAppNowRaw = snapshotData?.state;
+        if (remoteAppNowRaw) {
+          const remoteAppNow = bridge.sanitizeGestionState ? bridge.sanitizeGestionState(remoteAppNowRaw) : remoteAppNowRaw;
+          bridge.applyGestionState?.(remoteAppNow);
+          if (!same(remoteAppNow, remoteAppNowRaw)) {
+            firebaseFns.setDoc(cloudRef, {
+              state: clone(remoteAppNow),
+              updatedAt: firebaseFns.serverTimestamp(),
+              updatedBy: currentUser.uid
+            }, { merge: true }).catch(error => console.error("No se pudo migrar el catálogo compartido:", error));
+          }
+        }
         const remoteRawNow = snapshotData?.costosState;
         if (!remoteRawNow) { badge("☁️ Sincronizado", "ok"); return; }
         const remote = normalize(remoteRawNow);
