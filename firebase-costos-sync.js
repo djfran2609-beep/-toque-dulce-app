@@ -102,6 +102,6 @@
   // Conserva toda la sincronización que ya funcionaba, movida sin cambios a
   // firebase-costos-sync-original.js.
   const originalScript = document.createElement("script");
-  originalScript.src = "firebase-costos-sync-original.js?v=3";
+  originalScript.src = "firebase-costos-sync-original.js?v=4";
   document.head.appendChild(originalScript);
 })();
