@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest?v=2" /> 
   <link rel="apple-touch-icon" href="icon-512.png.PNG?v=2">
   <script src="recipe-import.js?v=2" defer></script>
-  <script src="firebase-sync-fix.js?v=4" defer></script>
+  <script src="firebase-sync-fix.js?v=5" defer></script>
       <style>
   
 :root {
@@ -267,6 +267,74 @@ function dedupeStateIngredients(){
   state.ingredients=ordered.sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'}));
 }
 
+function migratePreparedCreamRecipes(){
+  if(!state?.ingredients||!state?.products)return false;
+  let changed=false;
+  const setField=(obj,key,value)=>{if(obj[key]!==value){obj[key]=value;changed=true;}};
+  const ensureIngredient=(id,name,purchasePrice,purchaseQty,unit)=>{
+    let item=state.ingredients.find(i=>i.id===id)||state.ingredients.find(i=>nameKey(i.name)===nameKey(name));
+    if(!item){item={id,name,purchasePrice,purchaseQty,unit,active:true};state.ingredients.push(item);changed=true;}
+    setField(item,'name',name);setField(item,'purchasePrice',purchasePrice);setField(item,'purchaseQty',purchaseQty);setField(item,'unit',unit);setField(item,'active',true);
+    if(item.note){delete item.note;changed=true;}
+    return item.id;
+  };
+  let crema=state.ingredients.find(i=>i.id==='ing_crema')||state.ingredients.find(i=>nameKey(i.name)==='crema');
+  if(!crema){crema={id:'ing_crema',name:'Crema',purchasePrice:0,purchaseQty:1000,unit:'g',active:true,note:'Completá el precio de la crema'};state.ingredients.push(crema);changed=true;}
+  const cremaId=crema.id;
+  const dolcaId=ensureIngredient('ing_pasta_dolca','Pasta Dolca',7500,450,'g');
+  const bonId=ensureIngredient('ing_pasta_bon','Pasta Bon o Bon',8000,280,'g');
+  const cadburyPasteId=ensureIngredient('ing_pasta_cadbury','Pasta Cadbury',7500,450,'g');
+
+  const preparedItems=state.ingredients.filter(i=>{
+    const key=nameKey(i.name);
+    return key.includes('crema')&&key.includes('preparada');
+  });
+  const preparedIds=new Set(preparedItems.map(i=>i.id));
+  const chocoPreparedIds=new Set(preparedItems.filter(i=>nameKey(i.name).includes('chocotorta')).map(i=>i.id));
+  ['ing_crema_oreo','ing_crema_choco','ing_crema_bon','ing_crema_dolca','ing_crema_cadbury','ing_crema_dos'].forEach(id=>preparedIds.add(id));
+  chocoPreparedIds.add('ing_crema_choco');
+
+  const grouped=rows=>{
+    const map=new Map();
+    (rows||[]).forEach(row=>{
+      const qty=n(row.qty);
+      if(row.ingredientId&&qty>0)map.set(row.ingredientId,(map.get(row.ingredientId)||0)+qty);
+    });
+    return [...map].map(([ingredientId,qty])=>({ingredientId,qty}));
+  };
+  state.products.forEach(p=>{
+    const rows=[];
+    (p.recipe||[]).forEach(row=>{
+      if(!preparedIds.has(row.ingredientId)){rows.push(row);return;}
+      const qty=n(row.qty);
+      if(p.id==='p_choco'&&chocoPreparedIds.has(row.ingredientId)){
+        rows.push({ingredientId:'ing_dulce',qty:qty*.5},{ingredientId:'ing_queso',qty:qty*.25},{ingredientId:cremaId,qty:qty*.25});
+      }else{
+        rows.push({ingredientId:cremaId,qty});
+      }
+    });
+    const next=grouped(rows);
+    if(JSON.stringify(next)!==JSON.stringify(p.recipe||[])){p.recipe=next;changed=true;}
+  });
+
+  const forceFlavorRecipe=(productId,pasteId,pasteQty)=>{
+    const p=state.products.find(x=>x.id===productId);if(!p)return;
+    const removeIds=new Set([cremaId,pasteId]);
+    const rows=(p.recipe||[]).filter(row=>!removeIds.has(row.ingredientId));
+    rows.push({ingredientId:cremaId,qty:60},{ingredientId:pasteId,qty:pasteQty});
+    const next=grouped(rows);
+    if(JSON.stringify(next)!==JSON.stringify(p.recipe||[])){p.recipe=next;changed=true;}
+  };
+  forceFlavorRecipe('p_bon',bonId,11.2);
+  forceFlavorRecipe('p_banana',dolcaId,18);
+  forceFlavorRecipe('p_cadbury',cadburyPasteId,18);
+
+  const beforeCount=state.ingredients.length;
+  state.ingredients=state.ingredients.filter(i=>!preparedIds.has(i.id));
+  if(state.ingredients.length!==beforeCount)changed=true;
+  return changed;
+}
+
 function seedState(){
   const ingredients = [
     {id:'ing_oreo',name:'Masitas Oreo',purchasePrice:1560,purchaseQty:118,unit:'g',active:true},
@@ -275,9 +343,10 @@ function seedState(){
     {id:'ing_crema',name:'Crema',purchasePrice:6970,purchaseQty:1,unit:'kg',active:true},
     {id:'ing_queso',name:'Queso crema',purchasePrice:7670,purchaseQty:1,unit:'kg',active:true},
     {id:'ing_dulce',name:'Dulce de leche',purchasePrice:50500,purchaseQty:10,unit:'kg',active:true},
-    {id:'ing_pasta_dolca',name:'Pasta Dolca',purchasePrice:7500,purchaseQty:1,unit:'unit',active:true,note:'Cantidad del envase pendiente'},
+    {id:'ing_pasta_dolca',name:'Pasta Dolca',purchasePrice:7500,purchaseQty:450,unit:'g',active:true},
     {id:'ing_pasta_frutilla',name:'Pasta Frutilla',purchasePrice:7500,purchaseQty:1,unit:'unit',active:true,note:'Cantidad del envase pendiente'},
-    {id:'ing_pasta_bon',name:'Pasta Bon o Bon',purchasePrice:8000,purchaseQty:1,unit:'unit',active:true,note:'Cantidad del envase pendiente'},
+    {id:'ing_pasta_bon',name:'Pasta Bon o Bon',purchasePrice:8000,purchaseQty:280,unit:'g',active:true},
+    {id:'ing_pasta_cadbury',name:'Pasta Cadbury',purchasePrice:7500,purchaseQty:450,unit:'g',active:true},
     {id:'ing_vainilla',name:'Vainilla',purchasePrice:3017,purchaseQty:196,unit:'g',active:true},
     {id:'ing_vocacion',name:'Masitas Vocación',purchasePrice:2200,purchaseQty:435,unit:'g',active:true},
     {id:'ing_vaso',name:'Vaso',purchasePrice:426,purchaseQty:1,unit:'unit',active:true},
@@ -292,25 +361,19 @@ function seedState(){
     {id:'ing_mermelada',name:'Mermelada',purchasePrice:4500,purchaseQty:1,unit:'unit',active:true,note:'Tamaño del envase pendiente'},
     {id:'ing_chocolate',name:'Chocolate para ganache',purchasePrice:7578,purchaseQty:500,unit:'g',active:true},
     {id:'ing_bolitas',name:'Bolitas de cereal',purchasePrice:4245,purchaseQty:186,unit:'g',active:true},
-    {id:'ing_crema_oreo',name:'Crema Oreo preparada',purchasePrice:0,purchaseQty:1,unit:'g',active:true,note:'Preparación: completar receta/costo'},
-    {id:'ing_crema_choco',name:'Crema chocotorta preparada',purchasePrice:0,purchaseQty:1,unit:'g',active:true,note:'Preparación: completar receta/costo'},
-    {id:'ing_crema_bon',name:'Crema Bon o Bon preparada',purchasePrice:0,purchaseQty:1,unit:'g',active:true,note:'Preparación: completar receta/costo'},
-    {id:'ing_crema_dolca',name:'Crema Dolca preparada',purchasePrice:0,purchaseQty:1,unit:'g',active:true,note:'Preparación: completar receta/costo'},
-    {id:'ing_crema_cadbury',name:'Crema Cadbury preparada',purchasePrice:0,purchaseQty:1,unit:'g',active:true,note:'Preparación: completar receta/costo'},
-    {id:'ing_crema_dos',name:'Crema Dos Corazones preparada',purchasePrice:0,purchaseQty:1,unit:'g',active:true,note:'Preparación: completar receta/costo'}
   ];
   const pack = [{ingredientId:'ing_vaso',qty:1},{ingredientId:'ing_etiqueta',qty:1},{ingredientId:'ing_cuchara',qty:1}];
   const products = [
-    {id:'p_bomba',name:'Bomba Oreo',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_oreo',qty:67},{ingredientId:'ing_dulce',qty:100},{ingredientId:'ing_crema',qty:56},{ingredientId:'ing_crema_oreo',qty:30},...pack]},
-    {id:'p_choco',name:'Chocotorta',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_chocolinas',qty:105},{ingredientId:'ing_crema_choco',qty:110},...pack]},
+    {id:'p_bomba',name:'Bomba Oreo',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_oreo',qty:67},{ingredientId:'ing_dulce',qty:100},{ingredientId:'ing_crema',qty:86},...pack]},
+    {id:'p_choco',name:'Chocotorta',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_chocolinas',qty:105},{ingredientId:'ing_dulce',qty:55},{ingredientId:'ing_queso',qty:27.5},{ingredientId:'ing_crema',qty:27.5},...pack]},
     {id:'p_tiramisu',name:'Tiramisú',active:true,businessPrice:null,publicPrice:null,notes:'Receta pendiente de completar.',recipe:[...pack]},
     {id:'p_cheese',name:'Cheesecake',active:true,businessPrice:null,publicPrice:null,notes:'Receta pendiente de completar.',recipe:[...pack]},
-    {id:'p_bon',name:'Bon o Bon',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_bizco',qty:30},{ingredientId:'ing_dulce',qty:110},{ingredientId:'ing_crema_bon',qty:70},{ingredientId:'ing_bon',qty:1},...pack]},
+    {id:'p_bon',name:'Bon o Bon',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_bizco',qty:30},{ingredientId:'ing_dulce',qty:110},{ingredientId:'ing_crema',qty:60},{ingredientId:'ing_pasta_bon',qty:11.2},{ingredientId:'ing_bon',qty:1},...pack]},
     {id:'p_rasta',name:'Rasta',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_vocacion',qty:60},{ingredientId:'ing_dulce',qty:116},{ingredientId:'ing_crema',qty:70},{ingredientId:'ing_rasta',qty:.5},...pack]},
     {id:'p_franui',name:'Franui',active:true,businessPrice:null,publicPrice:null,notes:'Falta definir el gramaje de la cucharada de mermelada.',recipe:[{ingredientId:'ing_bizco',qty:40},{ingredientId:'ing_crema',qty:73},{ingredientId:'ing_dulce',qty:90},{ingredientId:'ing_franui',qty:1},...pack]},
-    {id:'p_banana',name:'Banana Dolca',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_bizco',qty:30},{ingredientId:'ing_dulce',qty:110},{ingredientId:'ing_crema_dolca',qty:70},{ingredientId:'ing_bananita',qty:.25},...pack]},
-    {id:'p_cadbury',name:'Cadbury',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_vocacion',qty:37},{ingredientId:'ing_dulce',qty:70},{ingredientId:'ing_bizco',qty:25},{ingredientId:'ing_crema_cadbury',qty:70},{ingredientId:'ing_cadbury',qty:40},...pack]},
-    {id:'p_dos',name:'Dos Corazones',active:true,businessPrice:null,publicPrice:null,notes:'Bizcochuelo cargado como promedio de 27,5 g.',recipe:[{ingredientId:'ing_vocacion',qty:37},{ingredientId:'ing_dulce',qty:70},{ingredientId:'ing_bizco',qty:27.5},{ingredientId:'ing_crema_dos',qty:70},{ingredientId:'ing_dos',qty:.5},...pack]},
+    {id:'p_banana',name:'Banana Dolca',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_bizco',qty:30},{ingredientId:'ing_dulce',qty:110},{ingredientId:'ing_crema',qty:60},{ingredientId:'ing_pasta_dolca',qty:18},{ingredientId:'ing_bananita',qty:.25},...pack]},
+    {id:'p_cadbury',name:'Cadbury',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_vocacion',qty:37},{ingredientId:'ing_dulce',qty:70},{ingredientId:'ing_bizco',qty:25},{ingredientId:'ing_crema',qty:60},{ingredientId:'ing_pasta_cadbury',qty:18},{ingredientId:'ing_cadbury',qty:40},...pack]},
+    {id:'p_dos',name:'Dos Corazones',active:true,businessPrice:null,publicPrice:null,notes:'Bizcochuelo cargado como promedio de 27,5 g.',recipe:[{ingredientId:'ing_vocacion',qty:37},{ingredientId:'ing_dulce',qty:70},{ingredientId:'ing_bizco',qty:27.5},{ingredientId:'ing_crema',qty:70},{ingredientId:'ing_dos',qty:.5},...pack]},
     {id:'p_matilda',name:'Matilda',active:true,businessPrice:5500,publicPrice:null,notes:'Receta pendiente de completar.',recipe:[...pack]}
   ];
   const weekId = uid('week');
@@ -345,6 +408,7 @@ function loadState(){
   if(!Array.isArray(state.nextWeekOrders))state.nextWeekOrders=[];
   if(!state.moneyControl||typeof state.moneyControl!=='object')state.moneyControl={cycleId:null,cashOpening:0,transferOpening:0,startedAt:null};
   migrateOpeningStocks();
+  migratePreparedCreamRecipes();
   dedupeStateIngredients();
   saveState(false);
 }
@@ -990,8 +1054,8 @@ function renderSettings(){
 }
 function saveSettings(){state.settings.businessPrice=n($('#setBiz').value);state.settings.publicPrice=n($('#setPub').value);saveState();showToast('Precios generales actualizados');}
 function exportBackup(){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=`toque-dulce-backup-${todayISO()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);showToast('Backup exportado');}
-function importBackup(file){if(!file)return;const r=new FileReader();r.onload=()=>{try{const data=JSON.parse(r.result);if(!data.products||!data.weeks)throw new Error();state=data;saveState(false);render();showToast('Backup importado');}catch(e){alert('El archivo no parece ser un backup válido de Toque Dulce.');}};r.readAsText(file);}
-function resetApp(){if(!confirm('¿Restablecer toda la app? Esto elimina los datos actuales del dispositivo.'))return;state=seedState();saveState();showToast('Datos restablecidos');}
+function importBackup(file){if(!file)return;const r=new FileReader();r.onload=()=>{try{const data=JSON.parse(r.result);if(!data.products||!data.weeks)throw new Error();state=data;migratePreparedCreamRecipes();dedupeStateIngredients();saveState(false);render();showToast('Backup importado');}catch(e){alert('El archivo no parece ser un backup válido de Toque Dulce.');}};r.readAsText(file);}
+function resetApp(){if(!confirm('¿Restablecer toda la app? Esto elimina los datos actuales del dispositivo.'))return;state=seedState();migratePreparedCreamRecipes();dedupeStateIngredients();saveState();showToast('Datos restablecidos');}
 
 function renderMore(){
   const w=currentWeek(),avisoCierre=weekShouldClose(w)?`<div class="note" style="margin-bottom:12px"><strong>Semana pendiente de finalizar</strong><br>Completá el cierre para guardar la ganancia correcta.<button class="btn primary wide" style="margin-top:10px" onclick="openWeekClose('${w.id}')">Finalizar semana</button></div>`:'';
