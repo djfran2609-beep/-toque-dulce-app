@@ -150,24 +150,12 @@
 }
 
   function mergeAppCatalog(localValue,remoteValue){
-  if(!localValue&&!remoteValue)return null;
-  if(!remoteValue)return clone(localValue);
-  if(!localValue)return clone(remoteValue);
-  const output=clone(remoteValue);
-  const mergeNamed=(remoteList,localList)=>{
-    const result=clone(Array.isArray(remoteList)?remoteList:[]),byId=new Map(),byName=new Map();
-    result.forEach(item=>{if(item?.id)byId.set(String(item.id),item);const key=appNameKey(item?.name);if(key)byName.set(key,item);});
-    (Array.isArray(localList)?localList:[]).forEach(item=>{
-      const target=byId.get(String(item?.id))||byName.get(appNameKey(item?.name));
-      if(target)Object.assign(target,clone(item),{id:target.id});
-      else{const added=clone(item);result.push(added);if(added?.id)byId.set(String(added.id),added);const key=appNameKey(added?.name);if(key)byName.set(key,added);}
-    });
-    return result.sort((a,b)=>String(a?.name||"").localeCompare(String(b?.name||""),"es",{sensitivity:"base"}));
-  };
-  output.ingredients=mergeNamed(remoteValue.ingredients,localValue.ingredients);
-  output.products=mergeNamed(remoteValue.products,localValue.products);
-  return output;
-}
+    // Al abrir Ganancias, el catálogo compartido es la fuente de verdad,
+    // igual que en Inicio. Una copia local vieja (o los datos iniciales)
+    // no debe reemplazar recetas, precios ni productos de la nube.
+    if(remoteValue)return clone(remoteValue);
+    return localValue?clone(localValue):null;
+  }
 
   function installStyles() {
     if (document.getElementById("td-costos-cloud-style")) return;
