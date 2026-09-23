@@ -52,11 +52,25 @@ fill('corregirCantidad',0);assert(el('aplicarCorreccion').disabled);click('preve
 click('cancelarCorreccion');assert.deepEqual(state(),stable);
 // Cloud updates while editing block stale submissions.
 click('abrirCorreccion');fill('corregirNuevo',54000);click('preverCorreccion');
-const remote=dom.window.toqueDulceCostosSync.getState();remote.cierres.target.guardadoEn='changed-remotely';dom.window.toqueDulceCostosSync.applyState(remote);
-click('aplicarCorreccion');assert.match(el('vistaCorreccion').textContent,/cambió mientras/);assert.equal(state().cierres.target.costosUnitarios.oreo,2260);click('cancelarCorreccion');
+const remote=dom.window.toqueDulceCostosSync.getState();remote.cierres.target.costosUnitarios.otro=1001;dom.window.toqueDulceCostosSync.applyState(remote);
+click('aplicarCorreccion');assert.match(el('vistaCorreccion').textContent,/Cambiaron ventas/);assert.equal(state().cierres.target.costosUnitarios.oreo,2260);click('cancelarCorreccion');
 // Grams and kg are equivalent; zero old price is valid, negative costs are not.
 click('abrirCorreccion');fill('corregirNuevo',54000);fill('corregirCantidad',10000);el('corregirUnidad').value='g';click('preverCorreccion');assert(!el('aplicarCorreccion').disabled);click('cancelarCorreccion');
 // Recipe quantities can be reviewed for historic recipes without editing the catalog.
 click('abrirCorreccion');fill('corregirNuevo',54000);fill('corr_oreo',200);click('preverCorreccion');assert.match(el('vistaCorreccion').textContent,/100/);click('cancelarCorreccion');
+// Firestore key order and nonfinancial metadata must not block the form.
+function reverseKeys(value){return Array.isArray(value)?value.map(reverseKeys):value&&typeof value==='object'?Object.fromEntries(Object.keys(value).reverse().map(key=>[key,reverseKeys(value[key])])):value;}
+click('abrirCorreccion');fill('corregirNuevo',54000);
+const syncedApp=reverseKeys(dom.window.toqueDulceCostosSync.getGestionState());syncedApp.weeks.find(w=>w.id==='target').closingStockUpdatedAt='sync-only';
+dom.window.toqueDulceCostosSync.applyGestionState(syncedApp);
+const synced=reverseKeys(dom.window.toqueDulceCostosSync.getState());synced.cierres.target.guardadoEn='sync-only';dom.window.toqueDulceCostosSync.applyState(synced);
+click('preverCorreccion');assert(!el('aplicarCorreccion').disabled,el('vistaCorreccion').textContent);
+// A second sync after preview must also permit saving.
+const syncedAgain=reverseKeys(dom.window.toqueDulceCostosSync.getState());syncedAgain.cierres.target.guardadoEn='sync-only-again';dom.window.toqueDulceCostosSync.applyState(syncedAgain);
+click('aplicarCorreccion');assert.equal(state().cierres.target.costosUnitarios.oreo,2265);assert(el('correccionCosto').classList.contains('oculto'));
+// A real sale edit still blocks a stale correction.
+click('abrirCorreccion');fill('corregirNuevo',55000);click('preverCorreccion');
+const changedApp=dom.window.toqueDulceCostosSync.getGestionState();changedApp.weeks.find(w=>w.id==='target').orders[0].items[0].qty+=1;dom.window.toqueDulceCostosSync.applyGestionState(changedApp);
+click('aplicarCorreccion');assert.match(el('vistaCorreccion').textContent,/Cambiaron ventas/);assert.equal(state().cierres.target.costosUnitarios.oreo,2265);
 assert.deepEqual(errors,[]);dom.window.close();
 console.log('PASS: correction amount, unchanged sales/stock/catalog/other weeks, monthly and weekly profit, duplicate guard, second correction, cancellation, stale sync, persistence, unit conversion, historical quantities.');

@@ -418,6 +418,21 @@
     $('guardarCierre').disabled=false;$('vendiTodo').disabled=false;
   }
   function invalidarCorreccion(){correccionVista=null;$('aplicarCorreccion').disabled=true;$('vistaCorreccion').textContent='';}
+  function serializarEstable(valor){
+    // Firestore puede devolver las mismas propiedades en otro orden.
+    const ordenar=v=>Array.isArray(v)?v.map(ordenar):v&&typeof v==='object'?Object.fromEntries(Object.keys(v).sort().map(k=>[k,ordenar(v[k])])):v;
+    return JSON.stringify(ordenar(valor));
+  }
+  function firmaFinancieraCorreccion(cierre,semana){
+    if(!cierre||!semana)return null;
+    const negocios={};
+    (semana.orders||[]).forEach(o=>(o.items||[]).forEach(i=>{
+      const pid=i.productId,qty=numero(i.qty),precio=numero(i.unitPrice??precioGestion(productoGestion(pid),'business'));
+      if(!negocios[pid])negocios[pid]={cantidad:0,ingreso:0};
+      negocios[pid].cantidad+=qty;negocios[pid].ingreso+=qty*precio;
+    }));
+    return serializarEstable({costos:cierre.costosUnitarios,ventas:cierre.ventasPublico,precios:cierre.preciosPublico,restantes:cierre.restantes,correcciones:cierre.correccionesCostos||[],negocios});
+  }
   function prepararIngredienteCorreccion(){
     invalidarCorreccion();
     const ing=datos.ingredientes.find(i=>i.id===$('corregirIngrediente').value);if(!ing)return;
@@ -443,7 +458,7 @@
     gestion=cargarGestion();
     const weekId=$('semanaCierre').value,cierre=datos.cierres[weekId],semana=gestion?.weeks.find(w=>w.id===weekId);
     if(!cierre?.costosUnitarios||!semana)return;
-    correccionEnEdicion={weekId,cierreOriginal:JSON.stringify(cierre),semanaOriginal:JSON.stringify(semana)};
+    correccionEnEdicion={weekId,firmaOriginal:firmaFinancieraCorreccion(cierre,semana)};
     $('corregirIngrediente').innerHTML=datos.ingredientes.map(i=>`<option value="${escapar(i.id)}">${escapar(i.nombre)}</option>`).join('');
     const dulce=datos.ingredientes.find(i=>claveNombre(i.nombre).includes('dulce de leche'));
     if(dulce)$('corregirIngrediente').value=dulce.id;
@@ -459,9 +474,10 @@
   $('cancelarCorreccion').addEventListener('click',()=>{cerrarCorreccion();render();});
   function calcularCorreccion(){
     if(!correccionEnEdicion)throw Error('Elegí una semana cerrada.');
-    const {weekId,cierreOriginal,semanaOriginal}=correccionEnEdicion;
-    const cierre=datos.cierres[weekId],semana=cargarGestion()?.weeks.find(w=>w.id===weekId);
-    if(JSON.stringify(cierre)!==cierreOriginal||JSON.stringify(semana)!==semanaOriginal)throw Error('La semana cambió mientras editabas. Cancelá y volvé a abrir la corrección.');
+    const {weekId,firmaOriginal}=correccionEnEdicion;
+    gestion=cargarGestion();
+    const cierre=datos.cierres[weekId],semana=gestion?.weeks.find(w=>w.id===weekId);
+    if(firmaFinancieraCorreccion(cierre,semana)!==firmaOriginal)throw Error('Cambiaron ventas, sobrantes o costos de esta semana. Cancelá y volvé a abrir la corrección para usar esos datos.');
     if(cierreEnEdicion)throw Error('Hay sobrantes sin guardar. Cancelá la corrección y guardalos primero.');
     const ing=datos.ingredientes.find(i=>i.id===$('corregirIngrediente').value);
     const leer=id=>{const raw=$(id).value,value=Number(raw);if(!raw.trim()||!Number.isFinite(value)||value<0)throw Error('Completá precios y cantidades válidos.');return value;};
@@ -501,7 +517,7 @@
     e.preventDefault();
     try{
       const actual=calcularCorreccion();
-      if(!correccionVista||JSON.stringify(actual)!==JSON.stringify(correccionVista))throw Error('Volvé a tocar Ver nueva ganancia antes de guardar.');
+      if(!correccionVista||serializarEstable(actual)!==serializarEstable(correccionVista))throw Error('Volvé a tocar Ver nueva ganancia antes de guardar.');
       const cierre=datos.cierres[actual.weekId],fecha=new Date().toISOString();
       const nuevo={...cierre,costosUnitarios:actual.costosUnitarios,guardadoEn:fecha,correccionesCostos:[...(cierre.correccionesCostos||[]),{...actual.registro,fecha}]};
       // Solo cambia este cierre. No toca gestión, recetas ni precios actuales.
