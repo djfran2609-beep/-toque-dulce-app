@@ -259,6 +259,10 @@
     if (!next || !next.products || !next.weeks) return;
     applyingRemote = true;
     state = clone(next);
+    // Antes de mostrar datos de la nube, aplica las migraciones actuales.
+    // Así una copia vieja no puede volver a traer "cremas preparadas".
+    if (typeof migratePreparedCreamRecipes === "function") migratePreparedCreamRecipes();
+    if (typeof dedupeStateIngredients === "function") dedupeStateIngredients();
     // La nube puede traer una semana creada antes de que existiera openingStock.
     // Recuperamos los sobrantes guardados en el cierre local antes de mostrarla.
     if (typeof migrateOpeningStocks === "function") migrateOpeningStocks();
