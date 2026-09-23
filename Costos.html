@@ -84,6 +84,22 @@
       <div id="detalleCierre"></div>
       <div class="botones" style="margin-top:12px"><button id="vendiTodo" class="btn" type="button">Vendí todo</button><button id="guardarCierre" class="btn principal" type="button">Finalizar semana</button></div>
       <div id="resultadoSemana" style="margin-top:14px"></div>
+      <button id="abrirCorreccion" class="btn oculto" type="button" style="margin-top:12px">Corregir costo de ingrediente</button>
+      <form id="correccionCosto" class="oculto" style="margin-top:14px">
+        <h3>Corregir costo de esta semana</h3>
+        <p class="ayuda">Ingresá el precio que usó el cierre y el precio correcto para la misma cantidad comprada. Se ajusta solamente este ingrediente en la semana seleccionada.</p>
+        <div class="campo"><label for="corregirIngrediente">Ingrediente</label><select id="corregirIngrediente"></select></div>
+        <div class="grid">
+          <div class="campo"><label for="corregirAnterior">Precio anterior ($)</label><input id="corregirAnterior" type="number" min="0" step="any" inputmode="decimal" required></div>
+          <div class="campo"><label for="corregirNuevo">Precio correcto ($)</label><input id="corregirNuevo" type="number" min="0" step="any" inputmode="decimal" required></div>
+          <div class="campo"><label for="corregirCantidad">Cantidad comprada (ambos precios)</label><input id="corregirCantidad" type="number" min="0.000001" step="any" inputmode="decimal" required></div>
+          <div class="campo"><label for="corregirUnidad">Unidad</label><select id="corregirUnidad"></select></div>
+        </div>
+        <p class="ayuda">Estos cierres no guardaban las cantidades históricas de ingredientes. Revisá las cantidades por postre: se proponen las recetas actuales y podés corregirlas acá para esa semana. Incluí el ingrediente de las cremas preparadas si corresponde.</p>
+        <div id="cantidadesCorreccion"></div>
+        <div id="vistaCorreccion" aria-live="polite" style="margin:12px 0"></div>
+        <div class="botones"><button id="preverCorreccion" class="btn" type="button">Ver nueva ganancia</button><button id="aplicarCorreccion" class="btn principal" type="submit" disabled>Guardar corrección</button><button id="cancelarCorreccion" class="btn" type="button">Cancelar</button></div>
+      </form>
     </div>
 
     <details class="card detalle-desplegable">
@@ -137,7 +153,7 @@
     <button id="importarBtn" class="btn" type="button">Restaurar copia</button>
     <input id="importar" class="oculto" type="file" accept="application/json">
   </div>
-  <p class="nota">Los cambios de precio actualizan automáticamente las ganancias. Ingredientes y recetas son los mismos de la app principal; los pedidos y la producción no se modifican desde acá.</p>
+  <p class="nota">Las semanas cerradas conservan sus costos. Para corregir un precio anterior, elegí la semana en Ganancias y usá Corregir costo de ingrediente.</p>
 </main>
 <div id="toast" class="toast"></div>
 
@@ -155,6 +171,8 @@
   let datos = cargar();
   let gestion = cargarGestion();
   let cierreEnEdicion = false;
+  let correccionEnEdicion = null;
+  let correccionVista = null;
 
   function mesActual(){const hoy=new Date();return `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;}
   function claveNombre(texto){return String(texto||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
@@ -181,7 +199,7 @@
   function renderDesdeSincronizacion(){
     // Mientras se completan los sobrantes, Firebase puede actualizar los datos
     // internos pero no debe reconstruir los inputs ni cambiar sus valores.
-    if(cierreEnEdicion)return;
+    if(cierreEnEdicion||correccionEnEdicion)return;
     render();
   }
   function guardar(opciones={}){
@@ -381,7 +399,7 @@
   window.borrarReceta=id=>{if(confirm('¿Eliminar este postre y su receta?')){datos.recetas=datos.recetas.filter(r=>r.id!==id);guardar();}};
 
   $('mesGanancias').addEventListener('change',e=>{datos.mesActivo=e.target.value||mesActual();guardar();});
-  $('semanaCierre').addEventListener('change',e=>{cierreEnEdicion=false;datos.semanaCierreId=e.target.value;localStorage.setItem(CLAVE,JSON.stringify(datos));renderGanancias();});
+  $('semanaCierre').addEventListener('change',e=>{cerrarCorreccion();cierreEnEdicion=false;datos.semanaCierreId=e.target.value;localStorage.setItem(CLAVE,JSON.stringify(datos));renderGanancias();});
   $('vendiTodo').addEventListener('click',()=>{document.querySelectorAll('.sobrante-input').forEach(i=>i.value=0);actualizarCierreVista();});
   $('guardarCierre').addEventListener('click',guardarCierreSemanal);
   $('formEgreso').addEventListener('submit',e=>{
@@ -392,6 +410,107 @@
     e.target.reset();guardar();avisar('Egreso agregado');
   });
   window.borrarEgreso=id=>{if(confirm('¿Eliminar este egreso?')){datos.egresos=datos.egresos.filter(e=>e.id!==id);guardar();}};
+
+  function cerrarCorreccion(){
+    correccionEnEdicion=null;correccionVista=null;
+    $('correccionCosto').classList.add('oculto');
+    document.querySelectorAll('.sobrante-input').forEach(input=>input.disabled=false);
+    $('guardarCierre').disabled=false;$('vendiTodo').disabled=false;
+  }
+  function invalidarCorreccion(){correccionVista=null;$('aplicarCorreccion').disabled=true;$('vistaCorreccion').textContent='';}
+  function prepararIngredienteCorreccion(){
+    invalidarCorreccion();
+    const ing=datos.ingredientes.find(i=>i.id===$('corregirIngrediente').value);if(!ing)return;
+    const cierre=datos.cierres[correccionEnEdicion.weekId];
+    const anterior=(cierre.correccionesCostos||[]).filter(c=>c.ingredienteId===ing.id).slice(-1)[0];
+    const grande=(ing.unidad==='g'||ing.unidad==='ml')&&ing.cantidad>=1000;
+    $('corregirUnidad').innerHTML=(ing.unidad==='g'?['kg','g']:ing.unidad==='ml'?['l','ml']:['u']).map(u=>`<option value="${u}">${u}</option>`).join('');
+    $('corregirUnidad').value=grande?(ing.unidad==='g'?'kg':'l'):ing.unidad;
+    $('corregirCantidad').value=ing.cantidad/(grande?1000:1);
+    $('corregirAnterior').value=anterior?anterior.precioUnitarioNuevo*ing.cantidad:'';
+    $('corregirNuevo').value=ing.precio;
+    const semana=gestion.weeks.find(w=>w.id===correccionEnEdicion.weekId);
+    const ids=new Set([...Object.keys(cierre.costosUnitarios),...Object.keys(cierre.ventasPublico||{}),...(semana.orders||[]).flatMap(o=>(o.items||[]).map(i=>i.productId))]);
+    $('cantidadesCorreccion').innerHTML=[...ids].map(pid=>{
+      const p=productoGestion(pid),nombre=cierre.nombres?.[pid]||p?.name||'Postre';
+      const receta=p?.recipe?.map(i=>({ingredienteId:i.ingredientId,cantidad:i.qty}))||recetaPorNombre(nombre)?.items||[];
+      const cantidad=anterior?.cantidades?.[pid]??receta.filter(i=>i.ingredienteId===ing.id).reduce((s,i)=>s+numero(i.cantidad),0);
+      return `<div class="cierre-fila"><label for="corr_${escapar(pid)}">${escapar(nombre)} · ${escapar(ing.unidad)} por postre</label><input id="corr_${escapar(pid)}" class="cantidad-correccion" data-pid="${escapar(pid)}" type="number" min="0" step="any" inputmode="decimal" required value="${cantidad}"></div>`;
+    }).join('');
+  }
+  $('abrirCorreccion').addEventListener('click',()=>{
+    if(cierreEnEdicion)return alert('Guardá primero los cambios de sobrantes.');
+    gestion=cargarGestion();
+    const weekId=$('semanaCierre').value,cierre=datos.cierres[weekId],semana=gestion?.weeks.find(w=>w.id===weekId);
+    if(!cierre?.costosUnitarios||!semana)return;
+    correccionEnEdicion={weekId,cierreOriginal:JSON.stringify(cierre),semanaOriginal:JSON.stringify(semana)};
+    $('corregirIngrediente').innerHTML=datos.ingredientes.map(i=>`<option value="${escapar(i.id)}">${escapar(i.nombre)}</option>`).join('');
+    const dulce=datos.ingredientes.find(i=>claveNombre(i.nombre).includes('dulce de leche'));
+    if(dulce)$('corregirIngrediente').value=dulce.id;
+    prepararIngredienteCorreccion();
+    $('guardarCierre').disabled=true;$('vendiTodo').disabled=true;
+    document.querySelectorAll('.sobrante-input').forEach(input=>input.disabled=true);
+    $('correccionCosto').classList.remove('oculto');
+    $('correccionCosto').scrollIntoView({behavior:'smooth',block:'start'});
+  });
+  $('corregirIngrediente').addEventListener('change',prepararIngredienteCorreccion);
+  $('correccionCosto').addEventListener('input',invalidarCorreccion);
+  $('corregirUnidad').addEventListener('change',invalidarCorreccion);
+  $('cancelarCorreccion').addEventListener('click',()=>{cerrarCorreccion();render();});
+  function calcularCorreccion(){
+    if(!correccionEnEdicion)throw Error('Elegí una semana cerrada.');
+    const {weekId,cierreOriginal,semanaOriginal}=correccionEnEdicion;
+    const cierre=datos.cierres[weekId],semana=cargarGestion()?.weeks.find(w=>w.id===weekId);
+    if(JSON.stringify(cierre)!==cierreOriginal||JSON.stringify(semana)!==semanaOriginal)throw Error('La semana cambió mientras editabas. Cancelá y volvé a abrir la corrección.');
+    if(cierreEnEdicion)throw Error('Hay sobrantes sin guardar. Cancelá la corrección y guardalos primero.');
+    const ing=datos.ingredientes.find(i=>i.id===$('corregirIngrediente').value);
+    const leer=id=>{const raw=$(id).value,value=Number(raw);if(!raw.trim()||!Number.isFinite(value)||value<0)throw Error('Completá precios y cantidades válidos.');return value;};
+    const precioAnterior=leer('corregirAnterior'),precioNuevo=leer('corregirNuevo'),cantidad=leer('corregirCantidad'),unidad=$('corregirUnidad').value;
+    const base=cantidad*(['kg','l'].includes(unidad)?1000:1);
+    if(!ing||base<=0)throw Error('Revisá la cantidad comprada.');
+    const precioUnitarioAnterior=precioAnterior/base,precioUnitarioNuevo=precioNuevo/base;
+    const ultima=(cierre.correccionesCostos||[]).filter(c=>c.ingredienteId===ing.id).slice(-1)[0];
+    if(ultima&&Math.abs(ultima.precioUnitarioNuevo-precioUnitarioAnterior)>0.00000001)throw Error('Este ingrediente ya fue corregido. El precio anterior debe ser el último precio guardado, para no descontarlo dos veces.');
+    if(precioUnitarioAnterior===precioUnitarioNuevo)throw Error('Los precios son iguales: no hay nada que corregir.');
+    const costosUnitarios={...cierre.costosUnitarios},cantidades={},vendidos={};
+    (semana.orders||[]).forEach(o=>(o.items||[]).forEach(i=>vendidos[i.productId]=(vendidos[i.productId]||0)+numero(i.qty)));
+    Object.entries(cierre.ventasPublico||{}).forEach(([pid,qty])=>vendidos[pid]=(vendidos[pid]||0)+numero(qty));
+    let diferencia=0,afectados=0;
+    document.querySelectorAll('.cantidad-correccion').forEach(input=>{
+      const pid=input.dataset.pid,qty=leer(input.id);cantidades[pid]=qty;if(!qty)return;
+      const costo=costosUnitarios[pid];
+      if(costo==null||!Number.isFinite(Number(costo)))throw Error('Falta el costo histórico de un postre con este ingrediente. Completá ese costo antes de corregirlo.');
+      const cambio=(precioUnitarioNuevo-precioUnitarioAnterior)*qty,nuevo=Number(costo)+cambio;
+      if(!Number.isFinite(nuevo)||nuevo<0)throw Error('La corrección dejaría un costo negativo. Revisá precios y cantidades.');
+      costosUnitarios[pid]=nuevo;diferencia+=cambio*(vendidos[pid]||0);afectados++;
+    });
+    if(!afectados)throw Error('Ningún postre tiene cantidad de este ingrediente. Revisá las cantidades.');
+    const ventas=ventasCalculadasDeSemana(semana);
+    const incompleta=ventas.some(v=>v.unidadesSinCosto>0);
+    const gananciaAnterior=ventas.reduce((s,v)=>s+v.ingresoNegocio+v.ingresoPublico-v.costoProduccion,0);
+    return {weekId,costosUnitarios,diferencia,gananciaAnterior,incompleta,registro:{ingredienteId:ing.id,nombre:ing.nombre,precioAnterior,precioNuevo,cantidad,unidad,precioUnitarioAnterior,precioUnitarioNuevo,cantidades,diferenciaGanancia:-diferencia,costosAnteriores:{...cierre.costosUnitarios}}};
+  }
+  $('preverCorreccion').addEventListener('click',()=>{
+    try{
+      const vista=calcularCorreccion();correccionVista=vista;
+      $('vistaCorreccion').innerHTML=`<div class="estado-ok"><strong>${escapar(datos.cierres[vista.weekId].label||'Semana seleccionada')}</strong><br>La ganancia ${vista.diferencia>=0?'baja':'sube'} ${dinero(Math.abs(vista.diferencia))}.${vista.incompleta?'<br>El resultado total sigue incompleto porque faltan otros costos.':`<br>Ganancia bruta anterior: ${dinero(vista.gananciaAnterior)}<br><strong>Nueva ganancia bruta: ${dinero(vista.gananciaAnterior-vista.diferencia)}</strong>`}<br>Revisá los precios y las cantidades antes de guardar.</div>`;
+      $('aplicarCorreccion').disabled=false;
+    }catch(error){invalidarCorreccion();$('vistaCorreccion').textContent=error.message;}
+  });
+  $('correccionCosto').addEventListener('submit',e=>{
+    e.preventDefault();
+    try{
+      const actual=calcularCorreccion();
+      if(!correccionVista||JSON.stringify(actual)!==JSON.stringify(correccionVista))throw Error('Volvé a tocar Ver nueva ganancia antes de guardar.');
+      const cierre=datos.cierres[actual.weekId],fecha=new Date().toISOString();
+      const nuevo={...cierre,costosUnitarios:actual.costosUnitarios,guardadoEn:fecha,correccionesCostos:[...(cierre.correccionesCostos||[]),{...actual.registro,fecha}]};
+      // Solo cambia este cierre. No toca gestión, recetas ni precios actuales.
+      const siguientes={...datos,cierres:{...datos.cierres,[actual.weekId]:nuevo}};
+      localStorage.setItem(CLAVE,JSON.stringify(siguientes));datos=siguientes;
+      cerrarCorreccion();render();window.dispatchEvent(new CustomEvent('toqueDulceCostosChanged'));
+      avisar('Costo corregido. Ganancias semanal y mensual actualizadas.');
+    }catch(error){$('vistaCorreccion').textContent=error.message;$('aplicarCorreccion').disabled=true;}
+  });
 
   function cierreAnterior(semana){
     const semanas=semanasGestion(),pos=semanas.findIndex(w=>w.id===semana?.id);
@@ -436,7 +555,7 @@
       const precioPromedio=cantidadVendida>0?ingresoTotal/cantidadVendida:precioActual,precioAnterior=anterior?.preciosPublico;
       restantes[pid]=restante;ventasPublico[pid]=cantidadVendida;preciosPublico[pid]=precioAnterior&&Object.prototype.hasOwnProperty.call(precioAnterior,pid)?numero(precioAnterior[pid]):precioPromedio;
     }
-    datos.cierres[semana.id]={weekId:semana.id,label:semana.label||'Semana',startDate:semana.startDate||'',restantes,ventasPublico,preciosPublico,nombres,costosUnitarios,costosCongeladosEn:anterior?.costosCongeladosEn||new Date().toISOString(),guardadoEn:new Date().toISOString()};
+    datos.cierres[semana.id]={...anterior,weekId:semana.id,label:semana.label||'Semana',startDate:semana.startDate||'',restantes,ventasPublico,preciosPublico,nombres,costosUnitarios,costosCongeladosEn:anterior?.costosCongeladosEn||new Date().toISOString(),guardadoEn:new Date().toISOString()};
     semana.closingStock={...restantes};
     semana.closingStockUpdatedAt=new Date().toISOString();
     semana.status='closed';
@@ -545,8 +664,10 @@
       const semana=semanas.find(w=>w.id===datos.semanaCierreId),filas=filasParaCierre(semana),pedidos=(semana.orders||[]).reduce((s,o)=>s+(o.items||[]).reduce((t,i)=>t+numero(i.qty),0),0),cierre=datos.cierres[semana.id];
       $('detalleCierre').innerHTML=`<div class="estado-aviso" style="margin-bottom:10px">${formato(pedidos)} postres de negocios ya contabilizados automáticamente. Las ventas cargadas desde <strong>Ventas</strong> también aparecen solas.</div>${filas.length?filas.map(f=>`<div class="cierre-fila"><div><div class="nombre">${escapar(f.p.name)}</div><div class="disponible">Stock anterior ${formato(f.stockAnterior)} + producidos ${formato(f.producidos)} = <strong>${formato(f.disponibles)} disponibles</strong><br>Vendidos: <strong id="vendidos_${f.p.id}">${formato(Math.max(0,f.disponibles-numero(f.restante)))}</strong>${f.ventasRegistradas?` · registrados ${formato(f.ventasRegistradas)}`:''}</div></div><div><label>Me quedaron</label><input class="sobrante-input" data-pid="${f.p.id}" data-disponible="${f.disponibles}" type="number" inputmode="numeric" min="0" max="${Math.max(0,f.disponibles-f.ventasRegistradas)}" step="1" value="${numero(f.restante)}" oninput="actualizarCierreVista()"></div></div>`).join(''):'<div class="lista-vacia">No hay producción propia ni stock anterior para cerrar.</div>'}`;
       $('vendiTodo').disabled=!filas.length;$('guardarCierre').disabled=!filas.length&&pedidos<=0;$('guardarCierre').textContent=cierre?'Actualizar cierre':'Finalizar semana';
+      $('abrirCorreccion').classList.toggle('oculto',!cierre?.costosUnitarios);
       renderResultadoSemana(semana);
     }else{
+      $('abrirCorreccion').classList.add('oculto');
       $('semanaCierre').disabled=true;$('semanaCierre').innerHTML='<option>Sin semanas</option>';$('detalleCierre').innerHTML='<div class="lista-vacia">Abrí primero la aplicación principal para cargar sus datos.</div>';$('resultadoSemana').innerHTML='';$('vendiTodo').disabled=true;$('guardarCierre').disabled=true;
     }
 
