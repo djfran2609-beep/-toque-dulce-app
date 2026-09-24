@@ -266,6 +266,9 @@
     // La nube puede traer una semana creada antes de que existiera openingStock.
     // Recuperamos los sobrantes guardados en el cierre local antes de mostrarla.
     if (typeof migrateOpeningStocks === "function") migrateOpeningStocks();
+    // Los precios de pedidos de la semana abierta siguen siempre el precio vigente del postre.
+    // Las semanas cerradas conservan el valor histórico que tenían.
+    if (typeof syncOpenWeekBusinessPrices === "function") syncOpenWeekBusinessPrices();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     if (doRender) render();
     applyingRemote = false;
