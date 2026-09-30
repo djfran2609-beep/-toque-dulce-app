@@ -30,10 +30,31 @@
   let latestRemoteState = null;
 
   const clone = (v) => JSON.parse(JSON.stringify(v));
+  // Firestore puede reordenar las propiedades sin que los datos cambien.
+  // Evita reconstruir pantallas y mezclar datos antiguos por esa razón.
   const same = (a, b) => {
-    try { return JSON.stringify(a) === JSON.stringify(b); }
-    catch (_) { return false; }
+    if (a === b) return true;
+    if (Array.isArray(a) || Array.isArray(b)) {
+      return Array.isArray(a) && Array.isArray(b) && a.length === b.length &&
+        a.every((item, index) => same(item, b[index]));
+    }
+    const objectA = a !== null && typeof a === "object";
+    const objectB = b !== null && typeof b === "object";
+    if (objectA || objectB) {
+      if (!objectA || !objectB) return false;
+      const keys = Object.keys(a);
+      return keys.length === Object.keys(b).length &&
+        keys.every(key => Object.prototype.hasOwnProperty.call(b, key) && same(a[key], b[key]));
+    }
+    return false;
   };
+  function productionPending() {
+    return typeof hasPendingOwnProduction === "function" && hasPendingOwnProduction();
+  }
+  function productionBadge() {
+    if (productionPending()) setBadge("☁️ Producción pendiente", "warn");
+    else setBadge("☁️ Sincronizado", "ok");
+  }
 
   function mergeArrays(base, local, remote) {
     const allObjects = [base, local, remote].every(arr =>
@@ -258,7 +279,10 @@
   function applyState(next, doRender = true) {
     if (!next || !next.products || !next.weeks) return;
     applyingRemote = true;
-    state = clone(next);
+    // Un guardado local pendiente no se descarta por un snapshot anterior.
+    const safeNext = typeof restorePendingOwnProduction === "function" ?
+      restorePendingOwnProduction(next) : next;
+    state = clone(safeNext);
     // Antes de mostrar datos de la nube, aplica las migraciones actuales.
     // Así una copia vieja no puede volver a traer "cremas preparadas".
     if (typeof migratePreparedCreamRecipes === "function") migratePreparedCreamRecipes();
@@ -270,32 +294,43 @@
     // Las semanas cerradas conservan el valor histórico que tenían.
     if (typeof syncOpenWeekBusinessPrices === "function") syncOpenWeekBusinessPrices();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    if (doRender) render();
+    // No reemplazar el formulario mientras el usuario introduce cantidades.
+    if (doRender && !(typeof shouldProtectOwnProductionForm === "function" &&
+      shouldProtectOwnProductionForm())) render();
     applyingRemote = false;
   }
 
   async function saveMergedCloud() {
     if (!cloudReady || applyingRemote || !currentUser || !cloudRef) return;
+    clearTimeout(saveTimer);
     setBadge("☁️ Guardando…", "warn");
-
+    let finalState = null;
     try {
-      await firebaseFns.runTransaction(db, async (tx) => {
+      // No actualizar la base local antes del commit: si la transacción
+      // falla, la próxima sincronización debe poder reintentar el cambio.
+      await firebaseFns.runTransaction(db, async tx => {
         const snap = await tx.get(cloudRef);
-        const remote = snap.exists() && snap.data()?.state ? snap.data().state : latestRemoteState || lastSyncedState || state;
+        const remote = snap.exists() && snap.data()?.state ?
+          snap.data().state : latestRemoteState || lastSyncedState || state;
         const merged = merge3(lastSyncedState || remote, state, remote);
-
-        tx.set(cloudRef, {
-          state: clone(merged),
-          updatedAt: firebaseFns.serverTimestamp(),
-          updatedBy: currentUser.uid
-        }, { merge: true });
-
-        latestRemoteState = clone(merged);
-        lastSyncedState = clone(merged);
-        if (!same(state, merged)) applyState(merged, true);
+        finalState = clone(merged);
+        if (!same(merged, remote)) {
+          tx.set(cloudRef, {
+            state: clone(merged),
+            updatedAt: firebaseFns.serverTimestamp(),
+            updatedBy: currentUser.uid
+          }, { merge: true });
+        }
       });
-
-      setBadge("☁️ Sincronizado", "ok");
+      if (!finalState) throw new Error("No se pudo confirmar la sincronización");
+      latestRemoteState = clone(finalState);
+      lastSyncedState = clone(finalState);
+      if (typeof confirmPendingOwnProduction === "function") confirmPendingOwnProduction(finalState);
+      if (!same(state, finalState)) applyState(finalState, true);
+      productionBadge();
+      // Si hubo nuevas modificaciones mientras se confirmaba la transacción,
+      // no marcarlas como sincronizadas sin subir la última versión.
+      if (!same(state, lastSyncedState)) queueCloudWrite();
     } catch (error) {
       console.error("Error al sincronizar Toque Dulce:", error);
       setBadge("☁️ Sin conexión", "error");
@@ -304,6 +339,7 @@
 
   function queueCloudWrite() {
     if (!cloudReady || applyingRemote) return;
+    if (lastSyncedState && same(state, lastSyncedState) && !productionPending()) return;
     clearTimeout(saveTimer);
     
     // No subir una copia completa potencialmente antigua. La transacción
@@ -329,6 +365,7 @@
 
       if (first.exists() && first.data()?.state) {
         const remote = first.data().state;
+        if (typeof confirmPendingOwnProduction === "function") confirmPendingOwnProduction(remote);
         latestRemoteState = clone(remote);
         lastSyncedState = clone(remote);
 
@@ -346,6 +383,7 @@
       }
 
       cloudReady = true;
+      if (productionPending() && !same(state, lastSyncedState)) queueCloudWrite();
 
       if (unsubscribeSnapshot) unsubscribeSnapshot();
       unsubscribeSnapshot = firebaseFns.onSnapshot(
@@ -353,6 +391,7 @@
         (snap) => {
           if (!snap.exists() || !snap.data()?.state) return;
           const remote = snap.data().state;
+          if (typeof confirmPendingOwnProduction === "function") confirmPendingOwnProduction(remote);
           latestRemoteState = clone(remote);
 
           if (same(state, lastSyncedState)) {
@@ -367,7 +406,7 @@
             queueCloudWrite();
           }
 
-          setBadge("☁️ Sincronizado", "ok");
+          productionBadge();
         },
         (error) => {
           console.error("Firestore snapshot:", error);
@@ -376,7 +415,7 @@
       );
 
       removeOverlay();
-      setBadge("☁️ Sincronizado", "ok");
+      productionBadge();
       try { showToast("Datos compartidos sincronizados"); } catch (_) {}
     } catch (error) {
       console.error("No se pudo conectar Firestore:", error);
