@@ -30,6 +30,39 @@
     catch (_) { return false; }
   };
   const isObject = value => value && typeof value === "object" && !Array.isArray(value);
+  // Persistir únicamente el cierre pendiente, no sobrescribir semanas ajenas.
+  const PENDING_KEY="toqueDulce_cierresPendientes_v1";
+  function loadPendingCloses(){
+    try{
+      const parsed=JSON.parse(localStorage.getItem(PENDING_KEY)||"{}");
+      return new Map(Object.entries(parsed&&!Array.isArray(parsed)?parsed:{})
+        .filter(([id,c])=>id&&c?.weekId===id&&c?.restantes&&typeof c.restantes==="object"));
+    }catch(error){return new Map();}
+  }
+  const pendingCloses=loadPendingCloses();
+  const closingInFlight=new Set();
+  function savePendingCloses(){
+    try{localStorage.setItem(PENDING_KEY,JSON.stringify(Object.fromEntries(pendingCloses)));}
+    catch(error){console.error("Cierre pendiente sin respaldo local",error);}
+  }
+  function preservePendingCosts(value){
+    const next=normalize(value);
+    for(const [id,cierre] of pendingCloses)next.cierres[id]=clone(cierre);
+    return next;
+  }
+  function preservePendingApp(value){
+    if(!value?.weeks||!pendingCloses.size)return value;
+    const next=clone(value);
+    for(const [id,cierre] of pendingCloses){
+      const week=next.weeks.find(w=>w.id===id);
+      if(week){
+        week.status="closed";
+        week.closingStock=clone(cierre.restantes);
+        week.closingStockUpdatedAt=cierre.guardadoEn||new Date().toISOString();
+      }
+    }
+    return next;
+  }
   // Propiedades reordenadas por Firestore no cuentan como datos nuevos.
   function sameValues(a,b){
     if(a===b)return true;
@@ -267,7 +300,7 @@
         const snapshot = await transaction.get(cloudRef);
         const remote = normalize(snapshot.data()?.costosState);
         const local = normalize(bridge.getState());
-        finalState = lastSyncedState ? merge3(lastSyncedState, local, remote) : mergeFresh(local, remote);
+        finalState = preservePendingCosts(lastSyncedState ? merge3(lastSyncedState, local, remote) : mergeFresh(local, remote));
         // Una escritura sin cambios generaría otro snapshot y otro repintado.
         if(!sameValues(finalState,remote)){
           transaction.set(cloudRef, {
@@ -292,25 +325,70 @@
     saveTimer = setTimeout(writeCostsNow, 180);
   }
 
-  async function finishWeekInCloud(weekId) {
-    if (!cloudReady || !weekId) return;
-    try {
-      await firebaseFns.runTransaction(db, async transaction => {
-        const snapshot = await transaction.get(cloudRef);
-        const appState = snapshot.data()?.state;
-        if (!appState?.weeks) return;
-        const week = appState.weeks.find(item => item.id === weekId);
-        if (!week) return;
-        week.status = "closed";
-        transaction.set(cloudRef, {
-          state: clone(appState),
-          updatedAt: firebaseFns.serverTimestamp(),
-          updatedBy: currentUser.uid
-        }, { merge: true });
+  async function finishWeekInCloud(weekId){
+    if(!weekId)return;
+    const actual=bridge.getState()?.cierres?.[weekId],previous=pendingCloses.get(weekId);
+    const cierre=actual&&(!previous||String(actual.guardadoEn||"")>String(previous.guardadoEn||""))?actual:previous;
+    if(!cierre?.restantes){
+      badge("No se pudo preparar el cierre","error");
+      window.dispatchEvent(new CustomEvent("toqueDulceCierreError",{detail:{weekId}}));
+      return;
+    }
+    if(!previous||!sameValues(previous,cierre)){
+      pendingCloses.set(weekId,clone(cierre));
+      savePendingCloses();
+    }
+    if(!cloudReady||!currentUser||!cloudRef){
+      badge("☁️ Cierre pendiente de sincronizar","warn");
+      return;
+    }
+    if(closingInFlight.has(weekId))return;
+    closingInFlight.add(weekId);
+    clearTimeout(saveTimer);
+    badge("☁️ Guardando cierre…","warn");
+    const capture=clone(pendingCloses.get(weekId));
+    let confirmedCosts;
+    try{
+      await firebaseFns.runTransaction(db,async transaction=>{
+        const document=await transaction.get(cloudRef);
+        const appState=clone(document.data()?.state);
+        const week=appState?.weeks?.find(w=>w.id===weekId);
+        if(!week)throw Error("La semana no existe en el estado compartido");
+        // Una transacción para ambos estados; no reemplazar pedidos ni historial.
+        week.status="closed";
+        week.closingStock=clone(capture.restantes);
+        week.closingStockUpdatedAt=capture.guardadoEn||new Date().toISOString();
+        const remote=normalize(document.data()?.costosState);
+        const local=normalize(bridge.getState());
+        const combined=lastSyncedState?merge3(lastSyncedState,local,remote):mergeFresh(local,remote);
+        combined.cierres[weekId]=clone(capture);
+        confirmedCosts=clone(combined);
+        transaction.set(cloudRef,{
+          state:appState,
+          costosState:combined,
+          updatedAt:firebaseFns.serverTimestamp(),
+          updatedBy:currentUser.uid,
+          costosUpdatedAt:firebaseFns.serverTimestamp(),
+          costosUpdatedBy:currentUser.uid
+        },{merge:true});
       });
-    } catch (error) {
-      console.error("No se pudo finalizar la semana en la nube:", error);
-      badge("Cierre local · sin conexión", "error");
+      if(sameValues(pendingCloses.get(weekId),capture)){
+        pendingCloses.delete(weekId);
+        savePendingCloses();
+      }
+      if(confirmedCosts)saveBase(confirmedCosts);
+      badge("☁️ Cierre guardado y sincronizado","ok");
+      window.dispatchEvent(new CustomEvent("toqueDulceCierreSincronizado",{detail:{weekId}}));
+      if(confirmedCosts&&!sameValues(bridge.getState(),confirmedCosts))queueWrite();
+    }catch(error){
+      // No afirmar que quedó sincronizado; conservar copia para reintento.
+      console.error("No se pudo confirmar el cierre completo",error);
+      badge("☁️ Cierre local · falta sincronizar","error");
+      window.dispatchEvent(new CustomEvent("toqueDulceCierreError",{detail:{weekId}}));
+    }finally{
+      closingInFlight.delete(weekId);
+      const newest=pendingCloses.get(weekId);
+      if(cloudReady&&newest&&!sameValues(newest,capture))void finishWeekInCloud(weekId);
     }
   }
 
@@ -328,10 +406,10 @@
       const first = await firebaseFns.getDoc(cloudRef);
       const remoteAppRaw = first.data()?.state, localApp = bridge.getGestionState?.();
       const mergedAppRaw = mergeAppCatalog(localApp, remoteAppRaw);
-      const mergedApp = bridge.sanitizeGestionState ? bridge.sanitizeGestionState(mergedAppRaw) : mergedAppRaw;
+      const mergedApp = preservePendingApp(bridge.sanitizeGestionState ? bridge.sanitizeGestionState(mergedAppRaw) : mergedAppRaw);
       if (mergedApp) {
         bridge.applyGestionState?.(mergedApp);
-        if (!same(mergedApp, remoteAppRaw)) {
+        if ((!pendingCloses.size||!remoteAppRaw) && !sameValues(mergedApp, remoteAppRaw)) {
           await firebaseFns.setDoc(cloudRef, {
             state: clone(mergedApp),
             updatedAt: firebaseFns.serverTimestamp(),
@@ -346,9 +424,10 @@
         const remote = normalize(remoteRaw);
         merged = lastSyncedState ? merge3(lastSyncedState, local, remote) : mergeFresh(local, remote);
       }
+      merged=preservePendingCosts(merged);
       applyState(merged);
       saveBase(merged);
-      if (!remoteRaw || !same(merged, normalize(remoteRaw))) {
+      if (!pendingCloses.size && (!remoteRaw || !sameValues(merged, normalize(remoteRaw)))) {
         await firebaseFns.setDoc(cloudRef, {
           costosState: clone(merged),
           costosUpdatedAt: firebaseFns.serverTimestamp(),
@@ -356,17 +435,18 @@
         }, { merge: true });
       }
       cloudReady = true;
+      for(const id of pendingCloses.keys())void finishWeekInCloud(id);
       unsubscribeSnapshot?.();
       unsubscribeSnapshot = firebaseFns.onSnapshot(cloudRef, snapshot => {
         const snapshotData = snapshot.data(), remoteAppNowRaw = snapshotData?.state;
         if (remoteAppNowRaw) {
-          const remoteAppNow = bridge.sanitizeGestionState ? bridge.sanitizeGestionState(remoteAppNowRaw) : remoteAppNowRaw;
+          const remoteAppNow = preservePendingApp(bridge.sanitizeGestionState ? bridge.sanitizeGestionState(remoteAppNowRaw) : remoteAppNowRaw);
           // Ignorar notificaciones que no cambiaron el catálogo compartido:
           // reconstruir Ganancias en cada snapshot interrumpía el teclado.
           if (!sameValues(remoteAppNow, bridge.getGestionState?.())) {
             bridge.applyGestionState?.(remoteAppNow);
           }
-          if (!sameValues(remoteAppNow, remoteAppNowRaw)) {
+          if (!pendingCloses.size && !sameValues(remoteAppNow, remoteAppNowRaw)) {
             firebaseFns.setDoc(cloudRef, {
               state: clone(remoteAppNow),
               updatedAt: firebaseFns.serverTimestamp(),
@@ -376,8 +456,8 @@
         }
         const remoteRawNow = snapshotData?.costosState;
         if (!remoteRawNow) { badge("☁️ Sincronizado", "ok"); return; }
-        const remote = normalize(remoteRawNow);
-        const localNow = normalize(bridge.getState());
+        const remote = preservePendingCosts(remoteRawNow);
+        const localNow = preservePendingCosts(bridge.getState());
         if (sameValues(localNow, lastSyncedState)) {
           if (!sameValues(remote, localNow)) applyState(remote);
           saveBase(remote);
@@ -387,7 +467,7 @@
           saveBase(remote);
           if (!sameValues(combined, remote)) queueWrite();
         }
-        badge("☁️ Sincronizado", "ok");
+        badge(pendingCloses.size?"☁️ Guardando cierre…":"☁️ Sincronizado",pendingCloses.size?"warn":"ok");
       }, error => {
         console.error("Firestore costos:", error);
         badge("☁️ Sin conexión", "error");
