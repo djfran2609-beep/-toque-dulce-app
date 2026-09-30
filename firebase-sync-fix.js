@@ -306,7 +306,10 @@
     if (!cloudReady || applyingRemote) return;
     clearTimeout(saveTimer);
     
-    saveTimer = setTimeout(() => firebaseFns.setDoc(cloudRef,{state:clone(state),updatedAt:firebaseFns.serverTimestamp(),updatedBy:currentUser.uid},{merge:true}).then(()=>setBadge("☁️ Sincronizado","ok")).catch(()=>setBadge("☁️ Sin conexión","error")),160);
+    // No subir una copia completa potencialmente antigua. La transacción
+    // mezcla los cambios locales con la última versión remota y conserva
+    // los cierres y sobrantes confirmados desde Ganancias.
+    saveTimer = setTimeout(saveMergedCloud,160);
   }
 
   async function connectCloud(user) {
@@ -353,7 +356,8 @@
           latestRemoteState = clone(remote);
 
           if (same(state, lastSyncedState)) {
-            applyState(remote, true);
+            // No reconstruir toda la app por cambios solo en Ganancias.
+            if(!same(state,remote))applyState(remote,true);
             lastSyncedState = clone(remote);
           } else {
             // Hay cambios locales sin subir: se mezclan antes de reemplazar nada.
