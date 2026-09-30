@@ -173,6 +173,27 @@
   let cierreEnEdicion = false;
   let correccionEnEdicion = null;
   let correccionVista = null;
+  // iOS cancela el teclado si la sincronización reemplaza el input.
+  let sobranteEnFoco = false, semanaSobrantesProtegida = null;
+  let ultimoDetalleRenderizado = null, ultimasOpcionesSemanas = null;
+  function protegiendoSobrantes(){
+    return cierreEnEdicion || sobranteEnFoco || !!document.querySelector('.sobrante-input:focus');
+  }
+  function protegerCampoSobrante(event){
+    if(!event.target?.matches?.('.sobrante-input'))return;
+    sobranteEnFoco=true;
+    semanaSobrantesProtegida=document.getElementById('semanaCierre')?.value||null;
+  }
+  // Interceptar antes de que Safari abra el teclado, no esperar al input.
+  document.addEventListener('pointerdown',protegerCampoSobrante,true);
+  document.addEventListener('focusin',protegerCampoSobrante,true);
+  document.addEventListener('focusout',event=>{
+    if(!event.target?.matches?.('.sobrante-input'))return;
+    setTimeout(()=>{
+      sobranteEnFoco=!!document.querySelector('.sobrante-input:focus');
+      if(!sobranteEnFoco&&!cierreEnEdicion)semanaSobrantesProtegida=null;
+    },0);
+  },true);
 
   function mesActual(){const hoy=new Date();return `${hoy.getFullYear()}-${String(hoy.getMonth()+1).padStart(2,'0')}`;}
   function claveNombre(texto){return String(texto||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();}
@@ -240,8 +261,7 @@
     // Al abrir el teclado todavía no existe un evento input. No reconstruir
     // los sobrantes mientras alguno tiene el foco ni después de editarlos.
     // Firebase puede actualizar los datos internos sin interrumpir al usuario.
-    const editandoSobrantes = document.activeElement?.matches?.('.sobrante-input');
-    if(cierreEnEdicion||correccionEnEdicion||editandoSobrantes)return;
+    if(correccionEnEdicion||protegiendoSobrantes())return;
     render();
   }
   function guardar(opciones={}){
@@ -447,7 +467,7 @@
   window.borrarReceta=id=>{if(confirm('¿Eliminar este postre y su receta?')){datos.recetas=datos.recetas.filter(r=>r.id!==id);guardar();}};
 
   $('mesGanancias').addEventListener('change',e=>{datos.mesActivo=e.target.value||mesActual();guardar();});
-  $('semanaCierre').addEventListener('change',e=>{cerrarCorreccion();cierreEnEdicion=false;datos.semanaCierreId=e.target.value;localStorage.setItem(CLAVE,JSON.stringify(datos));renderGanancias();});
+  $('semanaCierre').addEventListener('change',e=>{cerrarCorreccion();cierreEnEdicion=false;sobranteEnFoco=false;semanaSobrantesProtegida=null;datos.semanaCierreId=e.target.value;localStorage.setItem(CLAVE,JSON.stringify(datos));renderGanancias();});
   $('vendiTodo').addEventListener('click',()=>{document.querySelectorAll('.sobrante-input').forEach(i=>i.value=0);actualizarCierreVista();});
   $('guardarCierre').addEventListener('click',guardarCierreSemanal);
   $('formEgreso').addEventListener('submit',e=>{
@@ -593,6 +613,7 @@
   }
   function actualizarCierreVista(){
     cierreEnEdicion=true;
+    semanaSobrantesProtegida=$('semanaCierre').value;
     document.querySelectorAll('.sobrante-input').forEach(inp=>{
       const disponible=numero(inp.dataset.disponible),restante=Math.max(0,numero(inp.value));
       const salida=document.getElementById(`vendidos_${inp.dataset.pid}`);if(salida)salida.textContent=formato(Math.max(0,disponible-restante));
@@ -625,6 +646,8 @@
     semana.status='closed';
     localStorage.setItem(CLAVE_GESTION,JSON.stringify(gestion));
     cierreEnEdicion=false;
+    sobranteEnFoco=false;
+    semanaSobrantesProtegida=null;
     guardar();
     window.dispatchEvent(new CustomEvent('toqueDulceSemanaFinalizada',{detail:{weekId:semana.id}}));
     avisar('Semana finalizada y ganancias guardadas');
@@ -720,13 +743,26 @@
     $('gananciaUnidad').innerHTML=datos.recetas.length?`<table class="tabla-simple"><thead><tr><th>Postre</th><th>Costo</th><th>Negocio</th><th>Público</th></tr></thead><tbody>${datos.recetas.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(r=>{const c=costoRecetaParaGanancias(r);if(c===null)return `<tr><td><strong>${escapar(r.nombre)}</strong></td><td colspan="3" class="texto-rojo"><strong>Falta receta</strong></td></tr>`;return `<tr><td><strong>${escapar(r.nombre)}</strong></td><td>${dinero(c)}</td><td class="${r.precioNegocio-c<0?'texto-rojo':'positivo'}">${dinero(numero(r.precioNegocio)-c)}</td><td class="${r.precioPublico-c<0?'texto-rojo':'positivo'}">${dinero(numero(r.precioPublico)-c)}</td></tr>`;}).join('')}</tbody></table>`:'<div class="lista-vacia">Los postres aparecerán acá cuando cargues sus recetas.</div>';
 
     const semanas=semanasGestion().slice().reverse();
+    const protegerInputs=protegiendoSobrantes();
+    if(protegerInputs&&semanaSobrantesProtegida&&semanas.some(w=>w.id===semanaSobrantesProtegida)){
+      datos.semanaCierreId=semanaSobrantesProtegida;
+    }
     $('estadoGestion').className=gestion?'estado-ok':'estado-aviso';
     $('estadoGestion').textContent=gestion?'✓ Pedidos y producción leídos automáticamente desde Toque Dulce.':'No se encontraron datos de la aplicación principal. Volvé a Inicio, esperá que sincronice y entrá otra vez.';
     if(gestion&&semanas.length){
       if(!semanas.some(w=>w.id===datos.semanaCierreId))datos.semanaCierreId=semanas[0].id;
-      $('semanaCierre').disabled=false;$('semanaCierre').innerHTML=semanas.map(w=>`<option value="${w.id}" ${w.id===datos.semanaCierreId?'selected':''}>${escapar(w.label||w.startDate||'Semana')} ${datos.cierres[w.id]?'· cerrada':''}</option>`).join('');
+      $('semanaCierre').disabled=false;const opcionesSemanas=semanas.map(w=>`<option value="${w.id}" ${w.id===datos.semanaCierreId?'selected':''}>${escapar(w.label||w.startDate||'Semana')} ${datos.cierres[w.id]?'· cerrada':''}</option>`).join('');
+      if(!protegerInputs){
+        if(ultimasOpcionesSemanas!==opcionesSemanas){$('semanaCierre').innerHTML=opcionesSemanas;ultimasOpcionesSemanas=opcionesSemanas;}
+        $('semanaCierre').value=datos.semanaCierreId;
+      }
       const semana=semanas.find(w=>w.id===datos.semanaCierreId),filas=filasParaCierre(semana),pedidos=(semana.orders||[]).reduce((s,o)=>s+(o.items||[]).reduce((t,i)=>t+numero(i.qty),0),0),cierre=datos.cierres[semana.id];
-      $('detalleCierre').innerHTML=`<div class="estado-aviso" style="margin-bottom:10px">${formato(pedidos)} postres de negocios ya contabilizados automáticamente. Las ventas cargadas desde <strong>Ventas</strong> también aparecen solas.</div>${filas.length?filas.map(f=>`<div class="cierre-fila"><div><div class="nombre">${escapar(f.p.name)}</div><div class="disponible">Stock anterior ${formato(f.stockAnterior)} + producidos ${formato(f.producidos)} = <strong>${formato(f.disponibles)} disponibles</strong><br>Vendidos: <strong id="vendidos_${f.p.id}">${formato(Math.max(0,f.disponibles-numero(f.restante)))}</strong>${f.ventasRegistradas?` · registrados ${formato(f.ventasRegistradas)}`:''}</div></div><div><label>Me quedaron</label><input class="sobrante-input" data-pid="${f.p.id}" data-disponible="${f.disponibles}" type="number" inputmode="numeric" min="0" max="${Math.max(0,f.disponibles-f.ventasRegistradas)}" step="1" value="${numero(f.restante)}" oninput="actualizarCierreVista()"></div></div>`).join(''):'<div class="lista-vacia">No hay producción propia ni stock anterior para cerrar.</div>'}`;
+      const nuevoDetalle=`<div class="estado-aviso" style="margin-bottom:10px">${formato(pedidos)} postres de negocios ya contabilizados automáticamente. Las ventas cargadas desde <strong>Ventas</strong> también aparecen solas.</div>${filas.length?filas.map(f=>`<div class="cierre-fila"><div><div class="nombre">${escapar(f.p.name)}</div><div class="disponible">Stock anterior ${formato(f.stockAnterior)} + producidos ${formato(f.producidos)} = <strong>${formato(f.disponibles)} disponibles</strong><br>Vendidos: <strong id="vendidos_${f.p.id}">${formato(Math.max(0,f.disponibles-numero(f.restante)))}</strong>${f.ventasRegistradas?` · registrados ${formato(f.ventasRegistradas)}`:''}</div></div><div><label>Me quedaron</label><input class="sobrante-input" data-pid="${f.p.id}" data-disponible="${f.disponibles}" type="number" inputmode="numeric" min="0" max="${Math.max(0,f.disponibles-f.ventasRegistradas)}" step="1" value="${numero(f.restante)}" oninput="actualizarCierreVista()"></div></div>`).join(''):'<div class="lista-vacia">No hay producción propia ni stock anterior para cerrar.</div>'}`;
+      const firmaDetalle=semana.id+'|'+nuevoDetalle;
+      if(!protegerInputs&&ultimoDetalleRenderizado!==firmaDetalle){
+        $('detalleCierre').innerHTML=nuevoDetalle;
+        ultimoDetalleRenderizado=firmaDetalle;
+      }
       $('vendiTodo').disabled=!filas.length;$('guardarCierre').disabled=!filas.length&&pedidos<=0;$('guardarCierre').textContent=cierre?'Actualizar cierre':'Finalizar semana';
       $('abrirCorreccion').classList.toggle('oculto',!cierre?.costosUnitarios);
       renderResultadoSemana(semana);
@@ -823,6 +859,6 @@
   if(cierreSolicitado)setTimeout(()=>document.getElementById('cierreSemanal')?.scrollIntoView({behavior:'smooth',block:'start'}),120);
 })();
 </script>
-<script src="firebase-costos-sync.js?v=5" defer></script>
+<script src="firebase-costos-sync.js?v=6" defer></script>
 </body>
 </html>
