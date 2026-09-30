@@ -470,6 +470,12 @@
   $('semanaCierre').addEventListener('change',e=>{cerrarCorreccion();cierreEnEdicion=false;sobranteEnFoco=false;semanaSobrantesProtegida=null;datos.semanaCierreId=e.target.value;localStorage.setItem(CLAVE,JSON.stringify(datos));renderGanancias();});
   $('vendiTodo').addEventListener('click',()=>{document.querySelectorAll('.sobrante-input').forEach(i=>i.value=0);actualizarCierreVista();});
   $('guardarCierre').addEventListener('click',guardarCierreSemanal);
+  window.addEventListener('toqueDulceCierreSincronizado',event=>{
+    if(event.detail?.weekId===$('semanaCierre').value)avisar('Semana finalizada y sincronizada en la nube');
+  });
+  window.addEventListener('toqueDulceCierreError',event=>{
+    if(event.detail?.weekId===$('semanaCierre').value)avisar('Guardado en este celular, pero falta sincronizar');
+  });
   $('formEgreso').addEventListener('submit',e=>{
     e.preventDefault();
     const concepto=$('egresoConcepto').value.trim(),monto=numero($('egresoMonto').value);
@@ -650,7 +656,7 @@
     semanaSobrantesProtegida=null;
     guardar();
     window.dispatchEvent(new CustomEvent('toqueDulceSemanaFinalizada',{detail:{weekId:semana.id}}));
-    avisar('Semana finalizada y ganancias guardadas');
+    avisar('Cierre guardado en este celular. Sincronizando…');
   }
 
   $('exportar').addEventListener('click',()=>{const blob=new Blob([JSON.stringify(datos,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='copia-costos-toque-dulce.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);});
@@ -859,6 +865,6 @@
   if(cierreSolicitado)setTimeout(()=>document.getElementById('cierreSemanal')?.scrollIntoView({behavior:'smooth',block:'start'}),120);
 })();
 </script>
-<script src="firebase-costos-sync.js?v=6" defer></script>
+<script src="firebase-costos-sync.js?v=7" defer></script>
 </body>
 </html>
