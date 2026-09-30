@@ -237,9 +237,11 @@
     return null;
   }
   function renderDesdeSincronizacion(){
-    // Mientras se completan los sobrantes, Firebase puede actualizar los datos
-    // internos pero no debe reconstruir los inputs ni cambiar sus valores.
-    if(cierreEnEdicion||correccionEnEdicion)return;
+    // Al abrir el teclado todavía no existe un evento input. No reconstruir
+    // los sobrantes mientras alguno tiene el foco ni después de editarlos.
+    // Firebase puede actualizar los datos internos sin interrumpir al usuario.
+    const editandoSobrantes = document.activeElement?.matches?.('.sobrante-input');
+    if(cierreEnEdicion||correccionEnEdicion||editandoSobrantes)return;
     render();
   }
   function guardar(opciones={}){
@@ -821,6 +823,6 @@
   if(cierreSolicitado)setTimeout(()=>document.getElementById('cierreSemanal')?.scrollIntoView({behavior:'smooth',block:'start'}),120);
 })();
 </script>
-<script src="firebase-costos-sync.js?v=4" defer></script>
+<script src="firebase-costos-sync.js?v=5" defer></script>
 </body>
 </html>
