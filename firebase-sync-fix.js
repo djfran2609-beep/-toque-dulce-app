@@ -290,6 +290,8 @@
     // La nube puede traer una semana creada antes de que existiera openingStock.
     // Recuperamos los sobrantes guardados en el cierre local antes de mostrarla.
     if (typeof migrateOpeningStocks === "function") migrateOpeningStocks();
+    // Aplica el aumento vigente desde la semana del 30/09/2026 sin tocar semanas cerradas.
+    if (typeof migrateBusinessPrices20260930 === "function") migrateBusinessPrices20260930();
     // Los precios de pedidos de la semana abierta siguen siempre el precio vigente del postre.
     // Las semanas cerradas conservan el valor histórico que tenían.
     if (typeof syncOpenWeekBusinessPrices === "function") syncOpenWeekBusinessPrices();
