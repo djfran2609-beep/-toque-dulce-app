@@ -30,6 +30,19 @@
     catch (_) { return false; }
   };
   const isObject = value => value && typeof value === "object" && !Array.isArray(value);
+  // Propiedades reordenadas por Firestore no cuentan como datos nuevos.
+  function sameValues(a,b){
+    if(a===b)return true;
+    if(Array.isArray(a)||Array.isArray(b)){
+      return Array.isArray(a)&&Array.isArray(b)&&a.length===b.length&&a.every((v,i)=>sameValues(v,b[i]));
+    }
+    if(isObject(a)||isObject(b)){
+      if(!isObject(a)||!isObject(b))return false;
+      const keys=Object.keys(a);
+      return keys.length===Object.keys(b).length&&keys.every(k=>Object.prototype.hasOwnProperty.call(b,k)&&sameValues(a[k],b[k]));
+    }
+    return false;
+  }
 
   function normalize(value) {
     const data = isObject(value) ? clone(value) : {};
@@ -255,13 +268,16 @@
         const remote = normalize(snapshot.data()?.costosState);
         const local = normalize(bridge.getState());
         finalState = lastSyncedState ? merge3(lastSyncedState, local, remote) : mergeFresh(local, remote);
-        transaction.set(cloudRef, {
-          costosState: clone(finalState),
-          costosUpdatedAt: firebaseFns.serverTimestamp(),
-          costosUpdatedBy: currentUser.uid
-        }, { merge: true });
+        // Una escritura sin cambios generaría otro snapshot y otro repintado.
+        if(!sameValues(finalState,remote)){
+          transaction.set(cloudRef, {
+            costosState: clone(finalState),
+            costosUpdatedAt: firebaseFns.serverTimestamp(),
+            costosUpdatedBy: currentUser.uid
+          }, { merge: true });
+        }
       });
-      applyState(finalState);
+      if(!sameValues(finalState,bridge.getState()))applyState(finalState);
       saveBase(finalState);
       badge("☁️ Sincronizado", "ok");
     } catch (error) {
@@ -271,7 +287,7 @@
   }
 
   function queueWrite() {
-    if (!cloudReady || applyingRemote) return;
+    if (!cloudReady || applyingRemote || (lastSyncedState && sameValues(bridge.getState(),lastSyncedState))) return;
     clearTimeout(saveTimer);
     saveTimer = setTimeout(writeCostsNow, 180);
   }
@@ -347,10 +363,10 @@
           const remoteAppNow = bridge.sanitizeGestionState ? bridge.sanitizeGestionState(remoteAppNowRaw) : remoteAppNowRaw;
           // Ignorar notificaciones que no cambiaron el catálogo compartido:
           // reconstruir Ganancias en cada snapshot interrumpía el teclado.
-          if (!same(remoteAppNow, bridge.getGestionState?.())) {
+          if (!sameValues(remoteAppNow, bridge.getGestionState?.())) {
             bridge.applyGestionState?.(remoteAppNow);
           }
-          if (!same(remoteAppNow, remoteAppNowRaw)) {
+          if (!sameValues(remoteAppNow, remoteAppNowRaw)) {
             firebaseFns.setDoc(cloudRef, {
               state: clone(remoteAppNow),
               updatedAt: firebaseFns.serverTimestamp(),
@@ -362,15 +378,14 @@
         if (!remoteRawNow) { badge("☁️ Sincronizado", "ok"); return; }
         const remote = normalize(remoteRawNow);
         const localNow = normalize(bridge.getState());
-        if (same(localNow, lastSyncedState)) {
-          // No reemplazar el estado de Ganancias si no hubo cambios.
-          if (!same(remote, localNow)) applyState(remote);
+        if (sameValues(localNow, lastSyncedState)) {
+          if (!sameValues(remote, localNow)) applyState(remote);
           saveBase(remote);
         } else {
           const combined = lastSyncedState ? merge3(lastSyncedState, localNow, remote) : mergeFresh(localNow, remote);
-          if (!same(combined, localNow)) applyState(combined);
+          if (!sameValues(combined, localNow)) applyState(combined);
           saveBase(remote);
-          if (!same(combined, remote)) queueWrite();
+          if (!sameValues(combined, remote)) queueWrite();
         }
         badge("☁️ Sincronizado", "ok");
       }, error => {
