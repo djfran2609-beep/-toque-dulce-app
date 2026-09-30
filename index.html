@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest?v=2" /> 
   <link rel="apple-touch-icon" href="icon-512.png.PNG?v=2">
   <script src="recipe-import.js?v=2" defer></script>
-  <script src="firebase-sync-fix.js?v=6" defer></script>
+  <script src="firebase-sync-fix.js?v=7" defer></script>
       <style>
   
 :root {
@@ -216,6 +216,83 @@ let currentView = 'dashboard';
 let purchaseTab = 'purchases';
 let publicTab = 'deliveries';
 let toastTimer;
+// Borrador local de Producción propia: no forma parte de las semanas
+// ni se sincroniza hasta tocar Guardar producción propia.
+const OWN_DRAFT_KEY='toqueDulce_borradorProduccionPropia_v1';
+function loadOwnDraft(){
+  try{
+    const draft=JSON.parse(localStorage.getItem(OWN_DRAFT_KEY)||"null");
+    return draft && typeof draft.weekId==='string' &&
+      draft.values && typeof draft.values==='object' && !Array.isArray(draft.values) &&
+      ['editing','pending'].includes(draft.status) ? draft : null;
+  }catch(error){return null;}
+}
+let ownDraft=loadOwnDraft();
+let ownFormWeekId=null;
+let ownFieldActive=false;
+function persistOwnDraft(){
+  try{
+    if(ownDraft)localStorage.setItem(OWN_DRAFT_KEY,JSON.stringify(ownDraft));
+    else localStorage.removeItem(OWN_DRAFT_KEY);
+  }catch(error){console.error('No se pudo conservar el borrador de producción',error);}
+}
+function draftMatchesRemote(week,draft){
+  if(!week||!draft)return false;
+  return Object.entries(draft.values).every(([pid,raw])=>
+    Math.max(0,Math.floor(Number(raw||0))) ===
+    Math.max(0,Math.floor(Number(week.ownProduction?.[pid]?.qty||0))));
+}
+// La pantalla principal invoca estas funciones al recibir nuevos datos.
+function hasPendingOwnProduction(){return ownDraft?.status==='pending';}
+function confirmPendingOwnProduction(remote){
+  if(ownDraft?.status!=='pending')return false;
+  const target=remote?.weeks?.find(w=>w.id===ownDraft.weekId);
+  if(!draftMatchesRemote(target,ownDraft))return false;
+  ownDraft=null;
+  persistOwnDraft();
+  return true;
+}
+function restorePendingOwnProduction(remote){
+  if(ownDraft?.status!=='pending'||!remote?.weeks)return remote;
+  const latest=JSON.parse(JSON.stringify(remote));
+  const week=latest.weeks.find(w=>w.id===ownDraft.weekId);
+  // No abrir ni modificar una semana cerrada por una copia local antigua.
+  if(!week||week.status!=='open')return remote;
+  week.ownProduction={...(week.ownProduction||{})};
+  for(const [pid,raw] of Object.entries(ownDraft.values)){
+    const qty=Math.max(0,Math.floor(Number(raw||0)));
+    if(qty)week.ownProduction[pid]={qty,unitPrice:Number(ownDraft.prices?.[pid]||0)};
+    else delete week.ownProduction[pid];
+  }
+  return latest;
+}
+function shouldProtectOwnProductionForm(){
+  return currentView==='own' && (ownFieldActive ||
+    (ownDraft?.status==='editing'&&ownDraft.weekId===ownFormWeekId) ||
+    !!document.activeElement?.matches?.('.own-qty'));
+}
+function rememberOwnInput(){
+  if(currentView!=='own'||!ownFormWeekId)return;
+  const rows=document.querySelectorAll('.own-qty');
+  if(!rows.length)return;
+  const values={},prices={};
+  rows.forEach(el=>{values[el.dataset.pid]=el.value;prices[el.dataset.pid]=el.dataset.price;});
+  ownDraft={weekId:ownFormWeekId,values,prices,status:'editing',updatedAt:Date.now()};
+  persistOwnDraft();
+}
+// Capturar desde pointerdown/focusin ANTES del primer número de Safari.
+document.addEventListener('pointerdown',e=>{
+  if(e.target?.matches?.('.own-qty'))ownFieldActive=true;
+},true);
+document.addEventListener('focusin',e=>{
+  if(e.target?.matches?.('.own-qty'))ownFieldActive=true;
+},true);
+document.addEventListener('focusout',e=>{
+  if(!e.target?.matches?.('.own-qty'))return;
+  setTimeout(()=>{
+    ownFieldActive=!!document.activeElement?.matches?.('.own-qty');
+  },0);
+},true);
 
 const $ = (sel, root=document) => root.querySelector(sel);
 const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
@@ -530,7 +607,10 @@ function modal(title, body, opts={}){
   wrap.addEventListener('click',e=>{ if(e.target===wrap && !opts.locked) closeModal(); });
   document.body.appendChild(wrap); return wrap;
 }
-function go(view){ currentView=view; render(); window.scrollTo({top:0,behavior:'smooth'}); }
+function go(view){
+  if(view!=='own')ownFieldActive=false;
+  currentView=view; render(); window.scrollTo({top:0,behavior:'smooth'});
+}
 function setPublicTab(tab){ publicTab=tab==='stock'?'stock':'deliveries'; currentView='public'; render(); window.scrollTo({top:0,behavior:'smooth'}); }
 
 function render(){
@@ -691,19 +771,67 @@ function renderProduction(){
 function showProductionDetail(pid){ const rows=productionSources(pid).map(r=>`<div class="money-line"><span>${esc(r.name)}</span><strong>${qtyFmt(r.qty)}</strong></div>`).join(''); const total=productionByProduct()[pid]||0; modal(product(pid)?.name||'Postre',`${rows}<div class="divider"></div><div class="total-box"><div class="label">Total</div><div class="big">${qtyFmt(total)}</div></div>`); }
 
 function renderOwn(){
-  const w=currentWeek(), rows=activeProducts().map(p=>{
-    const v=w.ownProduction?.[p.id], pr=n(v?.unitPrice ?? priceOf(p,'public'));
-    return `<div class="qty-row"><div class="qty-name"><strong>${esc(p.name)}</strong><small>${money(pr)} potencial c/u</small></div><input class="qty-input own-qty" data-pid="${p.id}" data-price="${pr}" type="number" min="0" step="1" value="${v?.qty||''}" oninput="updateOwnTotal()"><div class="subtotal" id="ownsub_${p.id}">${v?.qty?money(n(v.qty)*pr):'—'}</div></div>`;
+  const w=currentWeek();
+  ownFormWeekId=w?.id||null;
+  const draft=ownDraft?.weekId===w?.id?ownDraft:null;
+  let shownQty=0,shownValue=0;
+  const rows=activeProducts().map(p=>{
+    const old=w.ownProduction?.[p.id];
+    const hasDraftValue=draft && Object.prototype.hasOwnProperty.call(draft.values,p.id);
+    const displayed=hasDraftValue?draft.values[p.id]:(old?.qty||'');
+    const price=n(draft?.prices?.[p.id] ?? old?.unitPrice ?? priceOf(p,'public'));
+    const quantity=int(displayed);
+    shownQty+=quantity;shownValue+=quantity*price;
+    return `<div class="qty-row"><div class="qty-name"><strong>${esc(p.name)}</strong><small>${money(price)} potencial c/u</small></div><input class="qty-input own-qty" data-pid="${p.id}" data-price="${price}" type="number" min="0" step="1" value="${esc(displayed)}" oninput="updateOwnTotal()"><div class="subtotal" id="ownsub_${p.id}">${quantity?money(quantity*price):'—'}</div></div>`;
   }).join('');
-  const ot=ownTotals(w);
+  const draftNotice=draft?(draft.status==='pending'?
+    '<div class="note">Producción guardada en este celular. Falta confirmar la sincronización en la nube.</div>':
+    '<div class="note">Borrador recuperado en este celular. Tocá Guardar producción propia cuando termines.</div>'):'';
   return `${hero('Producción propia','Postres que hacen para vender ustedes')}
     <div class="note">Esto no cuenta como facturación real hasta que registres la venta al público.</div>
+    ${draftNotice}
     <div class="section card" style="padding:10px 13px">${rows}</div>
-    <div class="section total-box"><div class="label">Valor potencial</div><div class="big" id="ownMoney">${money(ot.value)}</div><div class="meta" id="ownQty">${ot.qty} postres</div></div>
+    <div class="section total-box"><div class="label">Valor potencial</div><div class="big" id="ownMoney">${money(shownValue)}</div><div class="meta" id="ownQty">${shownQty} postres</div></div>
     <button class="btn primary wide section" onclick="saveOwnProduction()">Guardar producción propia</button>`;
 }
-function updateOwnTotal(){ let q=0,m=0; $$('.own-qty').forEach(inp=>{const qty=int(inp.value),pr=n(inp.dataset.price);q+=qty;m+=qty*pr;const el=$(`#ownsub_${inp.dataset.pid}`);if(el)el.textContent=qty?money(qty*pr):'—';}); if($('#ownMoney'))$('#ownMoney').textContent=money(m);if($('#ownQty'))$('#ownQty').textContent=`${q} postres`; }
-function saveOwnProduction(){ if(!ensureOpenWeek()) return; const w=currentWeek(), obj={}; $$('.own-qty').forEach(inp=>{const qty=int(inp.value);if(qty)obj[inp.dataset.pid]={qty,unitPrice:n(inp.dataset.price)};}); w.ownProduction=obj; saveState(false); render(); showToast('Producción propia guardada'); }
+function updateOwnTotal(){
+  let qty=0,value=0;
+  $$('.own-qty').forEach(inp=>{
+    const q=int(inp.value),price=n(inp.dataset.price);
+    qty+=q;value+=q*price;
+    const sub=$(`#ownsub_${inp.dataset.pid}`);
+    if(sub)sub.textContent=q?money(q*price):'—';
+  });
+  if($('#ownMoney'))$('#ownMoney').textContent=money(value);
+  if($('#ownQty'))$('#ownQty').textContent=`${qty} postres`;
+  rememberOwnInput();
+}
+function saveOwnProduction(){
+  if(!ensureOpenWeek())return;
+  const week=currentWeek(),rows=$$('.own-qty');
+  // Jamás volcar un formulario viejo en una semana creada en otro celular.
+  if(!week||!rows.length||!ownFormWeekId||ownFormWeekId!==week.id){
+    showToast('La semana cambió. Revisá la producción antes de guardarla.');
+    return;
+  }
+  // Preservar cantidades de productos agregados desde el otro celular que
+  // no estaban disponibles cuando se abrió este formulario.
+  const next={...(week.ownProduction||{})},values={},prices={};
+  for(const input of rows){
+    const pid=input.dataset.pid,qty=int(input.value),price=n(input.dataset.price);
+    values[pid]=input.value;prices[pid]=input.dataset.price;
+    if(qty)next[pid]={qty,unitPrice:price};else delete next[pid];
+  }
+  // Guardar el borrador como 'pendiente' ANTES de escribir el estado: si
+  // se corta Internet, se reintentará sin pedir que vuelvas a tipear todo.
+  ownDraft={weekId:week.id,values,prices,status:'pending',updatedAt:Date.now()};
+  persistOwnDraft();
+  week.ownProduction=next;
+  saveState(false);
+  ownFieldActive=false;
+  render();
+  showToast('Producción guardada acá. Sincronizando…');
+}
 
 function renderPublic(){
   const w=currentWeek(),stock=stockByProduct(w),st=salesTotals(w),orders=publicOrdersOf(w),pending=orders.filter(o=>!o.delivered).length,stockTotal=Object.values(stock).reduce((s,q)=>s+Math.max(0,n(q)),0);
