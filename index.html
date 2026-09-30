@@ -11,7 +11,7 @@
   <link rel="manifest" href="manifest.webmanifest?v=2" /> 
   <link rel="apple-touch-icon" href="icon-512.png.PNG?v=2">
   <script src="recipe-import.js?v=2" defer></script>
-  <script src="firebase-sync-fix.js?v=7" defer></script>
+  <script src="firebase-sync-fix.js?v=8" defer></script>
       <style>
   
 :root {
@@ -446,17 +446,17 @@ function seedState(){
     {id:'p_tiramisu',name:'Tiramisú',active:true,businessPrice:null,publicPrice:null,notes:'Receta pendiente de completar.',recipe:[...pack]},
     {id:'p_cheese',name:'Cheesecake',active:true,businessPrice:null,publicPrice:null,notes:'Receta pendiente de completar.',recipe:[...pack]},
     {id:'p_bon',name:'Bon o Bon',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_bizco',qty:30},{ingredientId:'ing_dulce',qty:110},{ingredientId:'ing_crema',qty:60},{ingredientId:'ing_pasta_bon',qty:11.2},{ingredientId:'ing_bon',qty:1},...pack]},
-    {id:'p_rasta',name:'Rasta',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_vocacion',qty:60},{ingredientId:'ing_dulce',qty:116},{ingredientId:'ing_crema',qty:70},{ingredientId:'ing_rasta',qty:.5},...pack]},
+    {id:'p_rasta',name:'Rasta',active:true,businessPrice:5700,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_vocacion',qty:60},{ingredientId:'ing_dulce',qty:116},{ingredientId:'ing_crema',qty:70},{ingredientId:'ing_rasta',qty:.5},...pack]},
     {id:'p_franui',name:'Franui',active:true,businessPrice:null,publicPrice:null,notes:'Falta definir el gramaje de la cucharada de mermelada.',recipe:[{ingredientId:'ing_bizco',qty:40},{ingredientId:'ing_crema',qty:73},{ingredientId:'ing_dulce',qty:90},{ingredientId:'ing_franui',qty:1},...pack]},
     {id:'p_banana',name:'Banana Dolca',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_bizco',qty:30},{ingredientId:'ing_dulce',qty:110},{ingredientId:'ing_crema',qty:60},{ingredientId:'ing_pasta_dolca',qty:18},{ingredientId:'ing_bananita',qty:.25},...pack]},
     {id:'p_cadbury',name:'Cadbury',active:true,businessPrice:null,publicPrice:null,notes:'Receta precargada con los datos compartidos.',recipe:[{ingredientId:'ing_vocacion',qty:37},{ingredientId:'ing_dulce',qty:70},{ingredientId:'ing_bizco',qty:25},{ingredientId:'ing_crema',qty:60},{ingredientId:'ing_pasta_cadbury',qty:18},{ingredientId:'ing_cadbury',qty:40},...pack]},
     {id:'p_dos',name:'Dos Corazones',active:true,businessPrice:null,publicPrice:null,notes:'Bizcochuelo cargado como promedio de 27,5 g.',recipe:[{ingredientId:'ing_vocacion',qty:37},{ingredientId:'ing_dulce',qty:70},{ingredientId:'ing_bizco',qty:27.5},{ingredientId:'ing_crema',qty:70},{ingredientId:'ing_dos',qty:.5},...pack]},
-    {id:'p_matilda',name:'Matilda',active:true,businessPrice:5500,publicPrice:null,notes:'Receta pendiente de completar.',recipe:[...pack]}
+    {id:'p_matilda',name:'Matilda',active:true,businessPrice:5700,publicPrice:null,notes:'Receta pendiente de completar.',recipe:[...pack]}
   ];
   const weekId = uid('week');
   return {
     version:1,
-    settings:{businessPrice:5000,publicPrice:7000},
+    settings:{businessPrice:5200,publicPrice:7000},
     ingredients,
     products,
     businesses:[],
@@ -468,6 +468,40 @@ function seedState(){
     weeks:[{id:weekId,label:weekLabel(),startDate:todayISO(),status:'open',orders:[],ownProduction:{},openingStock:{},publicSales:[],publicOrders:[],productionStatus:{}}],
     currentWeekId:weekId
   };
+}
+
+
+function migrateBusinessPrices20260930(){
+  if(!state||!state.settings||!Array.isArray(state.products))return false;
+  if(!state.migrations||typeof state.migrations!=='object'||Array.isArray(state.migrations))state.migrations={};
+  const key='businessPrices_2026_09_30';
+  if(state.migrations[key])return false;
+
+  let changed=false;
+  if(n(state.settings.businessPrice)===5000){
+    state.settings.businessPrice=5200;
+    changed=true;
+  }
+
+  state.products.forEach(p=>{
+    if(p.businessPrice==null||p.businessPrice==='')return;
+    const oldPrice=n(p.businessPrice);
+    if(oldPrice===5000){p.businessPrice=5200;changed=true;}
+    else if(oldPrice===5500){p.businessPrice=5700;changed=true;}
+  });
+
+  // Rasta y Matilda ya venían con precio especial de negocio.
+  // Si una copia vieja los trae sin ese especial, restauramos el precio vigente.
+  ['p_rasta','p_matilda'].forEach(id=>{
+    const p=state.products.find(item=>item.id===id);
+    if(p&&(p.businessPrice==null||p.businessPrice===''||n(p.businessPrice)===5500)){
+      p.businessPrice=5700;
+      changed=true;
+    }
+  });
+
+  state.migrations[key]=true;
+  return changed;
 }
 
 function loadState(){
@@ -487,6 +521,7 @@ function loadState(){
   migrateOpeningStocks();
   migratePreparedCreamRecipes();
   dedupeStateIngredients();
+  migrateBusinessPrices20260930();
   syncOpenWeekBusinessPrices();
   saveState(false);
 }
