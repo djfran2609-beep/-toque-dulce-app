@@ -345,7 +345,11 @@
         const snapshotData = snapshot.data(), remoteAppNowRaw = snapshotData?.state;
         if (remoteAppNowRaw) {
           const remoteAppNow = bridge.sanitizeGestionState ? bridge.sanitizeGestionState(remoteAppNowRaw) : remoteAppNowRaw;
-          bridge.applyGestionState?.(remoteAppNow);
+          // Ignorar notificaciones que no cambiaron el catálogo compartido:
+          // reconstruir Ganancias en cada snapshot interrumpía el teclado.
+          if (!same(remoteAppNow, bridge.getGestionState?.())) {
+            bridge.applyGestionState?.(remoteAppNow);
+          }
           if (!same(remoteAppNow, remoteAppNowRaw)) {
             firebaseFns.setDoc(cloudRef, {
               state: clone(remoteAppNow),
@@ -359,11 +363,12 @@
         const remote = normalize(remoteRawNow);
         const localNow = normalize(bridge.getState());
         if (same(localNow, lastSyncedState)) {
-          applyState(remote);
+          // No reemplazar el estado de Ganancias si no hubo cambios.
+          if (!same(remote, localNow)) applyState(remote);
           saveBase(remote);
         } else {
           const combined = lastSyncedState ? merge3(lastSyncedState, localNow, remote) : mergeFresh(localNow, remote);
-          applyState(combined);
+          if (!same(combined, localNow)) applyState(combined);
           saveBase(remote);
           if (!same(combined, remote)) queueWrite();
         }
