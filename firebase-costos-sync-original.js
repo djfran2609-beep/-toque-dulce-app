@@ -312,7 +312,7 @@
       });
       if(!sameValues(finalState,bridge.getState()))applyState(finalState);
       saveBase(finalState);
-      badge("☁️ Sincronizado", "ok");
+      badge(pendingCloses.size?"☁️ Cierre pendiente":"☁️ Sincronizado",pendingCloses.size?"warn":"ok");
     } catch (error) {
       console.error("Error sincronizando costos:", error);
       badge("☁️ Sin conexión", "error");
@@ -455,7 +455,7 @@
           }
         }
         const remoteRawNow = snapshotData?.costosState;
-        if (!remoteRawNow) { badge("☁️ Sincronizado", "ok"); return; }
+        if (!remoteRawNow) { badge(pendingCloses.size?"☁️ Cierre pendiente":"☁️ Sincronizado",pendingCloses.size?"warn":"ok"); return; }
         const remote = preservePendingCosts(remoteRawNow);
         const localNow = preservePendingCosts(bridge.getState());
         if (sameValues(localNow, lastSyncedState)) {
@@ -473,7 +473,7 @@
         badge("☁️ Sin conexión", "error");
       });
       removeOverlay();
-      badge("☁️ Sincronizado", "ok");
+      badge(pendingCloses.size?"☁️ Guardando cierre…":"☁️ Sincronizado",pendingCloses.size?"warn":"ok");
     } catch (error) {
       console.error("No se pudo conectar la calculadora:", error);
       showLogin("No se pudo conectar. Revisá Internet y probá otra vez.");
