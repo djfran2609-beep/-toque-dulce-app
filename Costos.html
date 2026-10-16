@@ -505,7 +505,7 @@
       if(!negocios[pid])negocios[pid]={cantidad:0,ingreso:0};
       negocios[pid].cantidad+=qty;negocios[pid].ingreso+=qty*precio;
     }));
-    return serializarEstable({costos:cierre.costosUnitarios,ventas:cierre.ventasPublico,precios:cierre.preciosPublico,restantes:cierre.restantes,correcciones:cierre.correccionesCostos||[],negocios});
+    return serializarEstable({costos:cierre.costosUnitarios,ventas:cierre.ventasPublico,salidasSinVenta:cierre.salidasSinVenta||{},precios:cierre.preciosPublico,restantes:cierre.restantes,correcciones:cierre.correccionesCostos||[],negocios});
   }
   function prepararIngredienteCorreccion(){
     invalidarCorreccion();
@@ -519,7 +519,7 @@
     $('corregirAnterior').value=anterior?anterior.precioUnitarioNuevo*ing.cantidad:'';
     $('corregirNuevo').value=ing.precio;
     const semana=gestion.weeks.find(w=>w.id===correccionEnEdicion.weekId);
-    const ids=new Set([...Object.keys(cierre.costosUnitarios),...Object.keys(cierre.ventasPublico||{}),...(semana.orders||[]).flatMap(o=>(o.items||[]).map(i=>i.productId))]);
+    const ids=new Set([...Object.keys(cierre.costosUnitarios),...Object.keys(cierre.ventasPublico||{}),...Object.keys(cierre.salidasSinVenta||{}),...(semana.orders||[]).flatMap(o=>(o.items||[]).map(i=>i.productId))]);
     $('cantidadesCorreccion').innerHTML=[...ids].map(pid=>{
       const p=productoGestion(pid),nombre=cierre.nombres?.[pid]||p?.name||'Postre';
       const receta=p?.recipe?.map(i=>({ingredienteId:i.ingredientId,cantidad:i.qty}))||recetaPorNombre(nombre)?.items||[];
@@ -565,6 +565,7 @@
     const costosUnitarios={...cierre.costosUnitarios},cantidades={},vendidos={};
     (semana.orders||[]).forEach(o=>(o.items||[]).forEach(i=>vendidos[i.productId]=(vendidos[i.productId]||0)+numero(i.qty)));
     Object.entries(cierre.ventasPublico||{}).forEach(([pid,qty])=>vendidos[pid]=(vendidos[pid]||0)+numero(qty));
+    Object.entries(cierre.salidasSinVenta||{}).forEach(([pid,qty])=>vendidos[pid]=(vendidos[pid]||0)+numero(qty));
     let diferencia=0,afectados=0;
     document.querySelectorAll('.cantidad-correccion').forEach(input=>{
       const pid=input.dataset.pid,qty=leer(input.id);cantidades[pid]=qty;if(!qty)return;
@@ -613,16 +614,17 @@
     return (gestion.products||[]).map(p=>{
       const stockAnterior=numero(anterior?.restantes?.[p.id]),producidos=numero(semana.ownProduction?.[p.id]?.qty),disponibles=stockAnterior+producidos;
       const ventasRegistradas=(semana.publicSales||[]).filter(v=>v.productId===p.id).reduce((s,v)=>s+numero(v.qty),0);
-      const restante=actual?.restantes?.[p.id]??Math.max(0,disponibles-ventasRegistradas);
-      return {p,stockAnterior,producidos,disponibles,restante,ventasRegistradas};
+      const salidasSinVenta=(semana.nonSaleOutflows||[]).filter(v=>v.productId===p.id).reduce((s,v)=>s+numero(v.qty),0);
+      const restante=actual?.restantes?.[p.id]??Math.max(0,disponibles-ventasRegistradas-salidasSinVenta);
+      return {p,stockAnterior,producidos,disponibles,restante,ventasRegistradas,salidasSinVenta};
     }).filter(f=>f.disponibles>0||Object.prototype.hasOwnProperty.call(actual?.restantes||{},f.p.id));
   }
   function actualizarCierreVista(){
     cierreEnEdicion=true;
     semanaSobrantesProtegida=$('semanaCierre').value;
     document.querySelectorAll('.sobrante-input').forEach(inp=>{
-      const disponible=numero(inp.dataset.disponible),restante=Math.max(0,numero(inp.value));
-      const salida=document.getElementById(`vendidos_${inp.dataset.pid}`);if(salida)salida.textContent=formato(Math.max(0,disponible-restante));
+      const disponible=numero(inp.dataset.disponible),sinVenta=numero(inp.dataset.sinVenta),restante=Math.max(0,numero(inp.value));
+      const salida=document.getElementById(`vendidos_${inp.dataset.pid}`);if(salida)salida.textContent=formato(Math.max(0,disponible-restante-sinVenta));
     });
   }
   window.actualizarCierreVista=actualizarCierreVista;
@@ -631,22 +633,23 @@
     const semana=(gestion?.weeks||[]).find(w=>w.id===$('semanaCierre').value);if(!semana)return avisar('No hay una semana para cerrar');
     const inputs=[...document.querySelectorAll('.sobrante-input')],pedidos=(semana.orders||[]).reduce((s,o)=>s+(o.items||[]).reduce((t,i)=>t+numero(i.qty),0),0);
     if(!inputs.length&&pedidos<=0)return avisar('No hay ventas ni producción en esta semana');
-    const anterior=datos.cierres[semana.id],restantes={},ventasPublico={},preciosPublico={},nombres={},costosUnitarios={};
+    const anterior=datos.cierres[semana.id],restantes={},ventasPublico={},preciosPublico={},nombres={},costosUnitarios={},salidasSinVenta={};
     (gestion.products||[]).forEach(p=>{
       nombres[p.id]=p.name||'Postre';
       const previo=anterior?.costosUnitarios,existe=previo&&Object.prototype.hasOwnProperty.call(previo,p.id),receta=recetaPorNombre(p.name);
       costosUnitarios[p.id]=existe&&previo[p.id]!==null?previo[p.id]:costoRecetaParaGanancias(receta);
     });
     for(const inp of inputs){
-      const pid=inp.dataset.pid,disponible=numero(inp.dataset.disponible),restante=numero(inp.value);
+      const pid=inp.dataset.pid,disponible=numero(inp.dataset.disponible),restante=numero(inp.value),cantidadSalida=(semana.nonSaleOutflows||[]).filter(v=>v.productId===pid).reduce((s,v)=>s+numero(v.qty),0);
       if(restante<0||restante>disponible)return alert(`El sobrante de ${productoGestion(pid)?.name||'un postre'} no puede superar ${formato(disponible)}.`);
-      const registradas=(semana.publicSales||[]).filter(v=>v.productId===pid),cantidadRegistrada=registradas.reduce((s,v)=>s+numero(v.qty),0),cantidadVendida=disponible-restante;
-      if(cantidadVendida<cantidadRegistrada)return alert(`Ya registraste ${formato(cantidadRegistrada)} ventas de ${productoGestion(pid)?.name||'este postre'}. El sobrante no puede superar ${formato(disponible-cantidadRegistrada)}.`);
+      const registradas=(semana.publicSales||[]).filter(v=>v.productId===pid),cantidadRegistrada=registradas.reduce((s,v)=>s+numero(v.qty),0),cantidadVendida=disponible-restante-cantidadSalida;
+      if(cantidadVendida<0)return alert(`Las salidas sin venta y el sobrante de ${productoGestion(pid)?.name||'este postre'} superan el stock disponible.`);
+      if(cantidadVendida<cantidadRegistrada)return alert(`Ya registraste ${formato(cantidadRegistrada)} ventas y ${formato(cantidadSalida)} salidas sin venta de ${productoGestion(pid)?.name||'este postre'}. Revisá el sobrante.`);
       const precioActual=precioGestion(productoGestion(pid),'public'),ingresoRegistrado=registradas.reduce((s,v)=>s+numero(v.qty)*numero(v.unitPrice??precioActual),0),ingresoTotal=ingresoRegistrado+Math.max(0,cantidadVendida-cantidadRegistrada)*precioActual;
       const precioPromedio=cantidadVendida>0?ingresoTotal/cantidadVendida:precioActual,precioAnterior=anterior?.preciosPublico;
-      restantes[pid]=restante;ventasPublico[pid]=cantidadVendida;preciosPublico[pid]=precioAnterior&&Object.prototype.hasOwnProperty.call(precioAnterior,pid)?numero(precioAnterior[pid]):precioPromedio;
+      restantes[pid]=restante;ventasPublico[pid]=cantidadVendida;salidasSinVenta[pid]=cantidadSalida;preciosPublico[pid]=precioAnterior&&Object.prototype.hasOwnProperty.call(precioAnterior,pid)?numero(precioAnterior[pid]):precioPromedio;
     }
-    datos.cierres[semana.id]={...anterior,weekId:semana.id,label:semana.label||'Semana',startDate:semana.startDate||'',restantes,ventasPublico,preciosPublico,nombres,costosUnitarios,costosCongeladosEn:anterior?.costosCongeladosEn||new Date().toISOString(),guardadoEn:new Date().toISOString()};
+    datos.cierres[semana.id]={...anterior,weekId:semana.id,label:semana.label||'Semana',startDate:semana.startDate||'',restantes,ventasPublico,salidasSinVenta,preciosPublico,nombres,costosUnitarios,costosCongeladosEn:anterior?.costosCongeladosEn||new Date().toISOString(),guardadoEn:new Date().toISOString()};
     semana.closingStock={...restantes};
     semana.closingStockUpdatedAt=new Date().toISOString();
     semana.status='closed';
@@ -675,7 +678,7 @@
   function renderResultadoSemana(semana){
     const cierre=semana&&datos.cierres[semana.id];
     if(!cierre){$('resultadoSemana').innerHTML='<div class="estado-aviso">Cuando termine la semana, indicá los sobrantes y confirmá el cierre para ver juntas la ganancia de negocios y la del público.</div>';return;}
-    let unidadesNegocio=0,unidadesPublico=0,gananciaNegocio=0,gananciaPublico=0;
+    let unidadesNegocio=0,unidadesPublico=0,unidadesSinVenta=0,gananciaNegocio=0,gananciaPublico=0,costoSinVenta=0;
     const faltantes=new Set(),costosCongelados=cierreConCostosCongelados(cierre);
     (semana.orders||[]).forEach(o=>(o.items||[]).forEach(i=>{
       const producto=productoGestion(i.productId),nombre=cierre.nombres?.[i.productId]||producto?.name||'Postre',cantidad=numero(i.qty),costo=costoDelCierre(cierre,i.productId,nombre),precio=numero(i.unitPrice??precioGestion(producto,'business'));
@@ -687,15 +690,20 @@
       unidadesPublico+=cantidad;
       if(costo!==null)gananciaPublico+=cantidad*(precio-costo);else if(cantidad>0)faltantes.add(nombre);
     });
-    const gananciaTotal=gananciaNegocio+gananciaPublico,unidadesTotal=unidadesNegocio+unidadesPublico;
-    $('resultadoSemana').innerHTML=`<h3 style="margin:4px 0 10px">Resultado de esta semana</h3><div class="resumen-mes"><div class="resultado"><span>Vendidos a negocios</span><strong>${formato(unidadesNegocio)}</strong></div><div class="resultado"><span>Ganancia de negocios</span><strong>${dinero(gananciaNegocio)}</strong></div><div class="resultado"><span>Vendidos al público</span><strong>${formato(unidadesPublico)}</strong></div><div class="resultado"><span>Ganancia del público</span><strong>${dinero(gananciaPublico)}</strong></div></div><div class="resultado neto"><span>Ganancia bruta total · ${formato(unidadesTotal)} postres</span><strong>${dinero(gananciaTotal)}</strong></div>${!costosCongelados?'<div class="estado-aviso" style="margin-top:10px">Este cierre se creó antes de guardar costos históricos. Tocá <strong>Actualizar cierre</strong> para congelarlos.</div>':''}${faltantes.size?`<div class="estado-aviso" style="margin-top:10px">Resultado incompleto: falta cargar la receta de costo de <strong>${[...faltantes].map(escapar).join(', ')}</strong>.</div>`:'<div class="estado-ok" style="margin-top:10px">Resultado semanal completo con costos congelados.</div>'}`;
+    Object.entries(cierre.salidasSinVenta||{}).forEach(([pid,valor])=>{
+      const producto=productoGestion(pid),nombre=cierre.nombres?.[pid]||producto?.name||'Postre',cantidad=numero(valor),costo=costoDelCierre(cierre,pid,nombre);
+      unidadesSinVenta+=cantidad;
+      if(costo!==null)costoSinVenta+=cantidad*costo;else if(cantidad>0)faltantes.add(nombre);
+    });
+    const gananciaTotal=gananciaNegocio+gananciaPublico-costoSinVenta,unidadesTotal=unidadesNegocio+unidadesPublico;
+    $('resultadoSemana').innerHTML=`<h3 style="margin:4px 0 10px">Resultado de esta semana</h3><div class="resumen-mes"><div class="resultado"><span>Vendidos a negocios</span><strong>${formato(unidadesNegocio)}</strong></div><div class="resultado"><span>Ganancia de negocios</span><strong>${dinero(gananciaNegocio)}</strong></div><div class="resultado"><span>Vendidos al público</span><strong>${formato(unidadesPublico)}</strong></div><div class="resultado"><span>Ganancia del público</span><strong>${dinero(gananciaPublico)}</strong></div><div class="resultado"><span>Salidas sin venta</span><strong>${formato(unidadesSinVenta)}</strong></div><div class="resultado"><span>Costo de esas salidas</span><strong>− ${dinero(costoSinVenta)}</strong></div></div><div class="resultado neto"><span>Ganancia bruta total · ${formato(unidadesTotal)} vendidos</span><strong>${dinero(gananciaTotal)}</strong></div>${!costosCongelados?'<div class="estado-aviso" style="margin-top:10px">Este cierre se creó antes de guardar costos históricos. Tocá <strong>Actualizar cierre</strong> para congelarlos.</div>':''}${faltantes.size?`<div class="estado-aviso" style="margin-top:10px">Resultado incompleto: falta cargar la receta de costo de <strong>${[...faltantes].map(escapar).join(', ')}</strong>.</div>`:'<div class="estado-ok" style="margin-top:10px">Resultado semanal completo con costos congelados.</div>'}`;
   }
 
   function ventasCalculadasDelMes(mes){
     const mapa={};
     const sumar=(nombre,canal,cantidad,ingreso,costoUnitarioHistorico)=>{
       const clave=claveNombre(nombre);if(!clave||cantidad<=0)return;
-      if(!mapa[clave])mapa[clave]={nombre,negocio:0,publico:0,ingresoNegocio:0,ingresoPublico:0,costoProduccion:0,unidadesSinCosto:0};
+      if(!mapa[clave])mapa[clave]={nombre,negocio:0,publico:0,sinVenta:0,ingresoNegocio:0,ingresoPublico:0,costoProduccion:0,unidadesSinCosto:0};
       mapa[clave][canal]+=cantidad;mapa[clave][canal==='negocio'?'ingresoNegocio':'ingresoPublico']+=ingreso;
       if(costoUnitarioHistorico===null||!Number.isFinite(Number(costoUnitarioHistorico)))mapa[clave].unidadesSinCosto+=cantidad;
       else mapa[clave].costoProduccion+=cantidad*Number(costoUnitarioHistorico);
@@ -705,10 +713,12 @@
       (w.orders||[]).forEach(o=>(o.items||[]).forEach(i=>{const p=productoGestion(i.productId),nombre=cierre?.nombres?.[i.productId]||p?.name||'Postre',receta=recetaPorNombre(nombre),costo=cierre?costoDelCierre(cierre,i.productId,nombre):costoRecetaParaGanancias(receta),cantidad=numero(i.qty),precio=numero(i.unitPrice??precioGestion(p,'business'));sumar(nombre,'negocio',cantidad,cantidad*precio,costo);}));
       if(!cierre){
         (w.publicSales||[]).forEach(v=>{const p=productoGestion(v.productId),nombre=p?.name||'Postre',receta=recetaPorNombre(nombre),cantidad=numero(v.qty),precio=numero(v.unitPrice??precioGestion(p,'public'));sumar(nombre,'publico',cantidad,cantidad*precio,costoRecetaParaGanancias(receta));});
+        (w.nonSaleOutflows||[]).forEach(v=>{const p=productoGestion(v.productId),nombre=p?.name||'Postre',receta=recetaPorNombre(nombre),cantidad=numero(v.qty);sumar(nombre,'sinVenta',cantidad,0,costoRecetaParaGanancias(receta));});
       }
     });
     Object.values(datos.cierres).filter(c=>String(c.startDate||'').slice(0,7)===mes).forEach(c=>{
       Object.entries(c.ventasPublico||{}).forEach(([pid,valor])=>{const p=productoGestion(pid),nombre=c.nombres?.[pid]||p?.name||'Postre',cantidad=numero(valor),precio=numero(c.preciosPublico?.[pid]??precioGestion(p,'public'));sumar(nombre,'publico',cantidad,cantidad*precio,costoDelCierre(c,pid,nombre));});
+      Object.entries(c.salidasSinVenta||{}).forEach(([pid,valor])=>{const p=productoGestion(pid),nombre=c.nombres?.[pid]||p?.name||'Postre',cantidad=numero(valor);sumar(nombre,'sinVenta',cantidad,0,costoDelCierre(c,pid,nombre));});
     });
     return Object.values(mapa);
   }
@@ -717,7 +727,7 @@
     const mapa={};
     const sumar=(nombre,canal,cantidad,ingreso,costoUnitarioHistorico)=>{
       const clave=claveNombre(nombre);if(!clave||cantidad<=0)return;
-      if(!mapa[clave])mapa[clave]={nombre,negocio:0,publico:0,ingresoNegocio:0,ingresoPublico:0,costoProduccion:0,unidadesSinCosto:0};
+      if(!mapa[clave])mapa[clave]={nombre,negocio:0,publico:0,sinVenta:0,ingresoNegocio:0,ingresoPublico:0,costoProduccion:0,unidadesSinCosto:0};
       mapa[clave][canal]+=cantidad;mapa[clave][canal==='negocio'?'ingresoNegocio':'ingresoPublico']+=ingreso;
       if(costoUnitarioHistorico===null||!Number.isFinite(Number(costoUnitarioHistorico)))mapa[clave].unidadesSinCosto+=cantidad;
       else mapa[clave].costoProduccion+=cantidad*Number(costoUnitarioHistorico);
@@ -733,10 +743,18 @@
         const p=productoGestion(pid),nombre=cierre.nombres?.[pid]||p?.name||'Postre',cantidad=numero(valor),precio=numero(cierre.preciosPublico?.[pid]??precioGestion(p,'public'));
         sumar(nombre,'publico',cantidad,cantidad*precio,costoDelCierre(cierre,pid,nombre));
       });
+      Object.entries(cierre.salidasSinVenta||{}).forEach(([pid,valor])=>{
+        const p=productoGestion(pid),nombre=cierre.nombres?.[pid]||p?.name||'Postre',cantidad=numero(valor);
+        sumar(nombre,'sinVenta',cantidad,0,costoDelCierre(cierre,pid,nombre));
+      });
     }else{
       (semana.publicSales||[]).forEach(v=>{
         const p=productoGestion(v.productId),nombre=p?.name||'Postre',receta=recetaPorNombre(nombre),cantidad=numero(v.qty),precio=numero(v.unitPrice??precioGestion(p,'public'));
         sumar(nombre,'publico',cantidad,cantidad*precio,costoRecetaParaGanancias(receta));
+      });
+      (semana.nonSaleOutflows||[]).forEach(v=>{
+        const p=productoGestion(v.productId),nombre=p?.name||'Postre',receta=recetaPorNombre(nombre),cantidad=numero(v.qty);
+        sumar(nombre,'sinVenta',cantidad,0,costoRecetaParaGanancias(receta));
       });
     }
     return Object.values(mapa);
@@ -763,7 +781,7 @@
         $('semanaCierre').value=datos.semanaCierreId;
       }
       const semana=semanas.find(w=>w.id===datos.semanaCierreId),filas=filasParaCierre(semana),pedidos=(semana.orders||[]).reduce((s,o)=>s+(o.items||[]).reduce((t,i)=>t+numero(i.qty),0),0),cierre=datos.cierres[semana.id];
-      const nuevoDetalle=`<div class="estado-aviso" style="margin-bottom:10px">${formato(pedidos)} postres de negocios ya contabilizados automáticamente. Las ventas cargadas desde <strong>Ventas</strong> también aparecen solas.</div>${filas.length?filas.map(f=>`<div class="cierre-fila"><div><div class="nombre">${escapar(f.p.name)}</div><div class="disponible">Stock anterior ${formato(f.stockAnterior)} + producidos ${formato(f.producidos)} = <strong>${formato(f.disponibles)} disponibles</strong><br>Vendidos: <strong id="vendidos_${f.p.id}">${formato(Math.max(0,f.disponibles-numero(f.restante)))}</strong>${f.ventasRegistradas?` · registrados ${formato(f.ventasRegistradas)}`:''}</div></div><div><label>Me quedaron</label><input class="sobrante-input" data-pid="${f.p.id}" data-disponible="${f.disponibles}" type="number" inputmode="numeric" min="0" max="${Math.max(0,f.disponibles-f.ventasRegistradas)}" step="1" value="${numero(f.restante)}" oninput="actualizarCierreVista()"></div></div>`).join(''):'<div class="lista-vacia">No hay producción propia ni stock anterior para cerrar.</div>'}`;
+      const nuevoDetalle=`<div class="estado-aviso" style="margin-bottom:10px">${formato(pedidos)} postres de negocios ya contabilizados automáticamente. Las ventas y salidas sin venta cargadas desde <strong>Ventas</strong> también aparecen solas.</div>${filas.length?filas.map(f=>`<div class="cierre-fila"><div><div class="nombre">${escapar(f.p.name)}</div><div class="disponible">Stock anterior ${formato(f.stockAnterior)} + producidos ${formato(f.producidos)} = <strong>${formato(f.disponibles)} disponibles</strong><br>Vendidos: <strong id="vendidos_${f.p.id}">${formato(Math.max(0,f.disponibles-numero(f.restante)-f.salidasSinVenta))}</strong>${f.ventasRegistradas?` · registrados ${formato(f.ventasRegistradas)}`:''}${f.salidasSinVenta?` · sin venta ${formato(f.salidasSinVenta)}`:''}</div></div><div><label>Me quedaron</label><input class="sobrante-input" data-pid="${f.p.id}" data-disponible="${f.disponibles}" data-sin-venta="${f.salidasSinVenta}" type="number" inputmode="numeric" min="0" max="${Math.max(0,f.disponibles-f.ventasRegistradas-f.salidasSinVenta)}" step="1" value="${numero(f.restante)}" oninput="actualizarCierreVista()"></div></div>`).join(''):'<div class="lista-vacia">No hay producción propia ni stock anterior para cerrar.</div>'}`;
       const firmaDetalle=semana.id+'|'+nuevoDetalle;
       if(!protegerInputs&&ultimoDetalleRenderizado!==firmaDetalle){
         $('detalleCierre').innerHTML=nuevoDetalle;
@@ -783,8 +801,8 @@
     const semanaSeleccionada=semanas.find(w=>w.id===datos.semanaCierreId)||null;
     const ventasSemana=ventasCalculadasDeSemana(semanaSeleccionada).map(v=>{const unidades=v.negocio+v.publico,ingreso=v.ingresoNegocio+v.ingresoPublico,completa=v.unidadesSinCosto===0,bruta=completa?ingreso-v.costoProduccion:null;return {...v,unidades,ingreso,completa,bruta};});
     const totalUnidades=ventas.reduce((s,v)=>s+v.unidades,0),conCosto=ventas.filter(v=>v.completa),brutaTotal=conCosto.reduce((s,v)=>s+v.bruta,0),egresosTotal=egresos.reduce((s,e)=>s+numero(e.monto),0),egresoUnidad=totalUnidades?egresosTotal/totalUnidades:0,netaTotal=brutaTotal-egresosTotal,faltantes=ventas.filter(v=>!v.completa),cierresAntiguos=Object.values(datos.cierres).filter(c=>String(c.startDate||'').slice(0,7)===mes&&!cierreConCostosCongelados(c));
-    const semanaUnidades=ventasSemana.reduce((s,v)=>s+v.unidades,0),semanaCompleta=ventasSemana.every(v=>v.completa),semanaBruta=ventasSemana.filter(v=>v.completa).reduce((s,v)=>s+v.bruta,0),semanaNeta=semanaBruta-(semanaUnidades*egresoUnidad),topSemana=ventasSemana.slice().sort((a,b)=>b.unidades-a.unidades||a.nombre.localeCompare(b.nombre))[0],cierreSemana=semanaSeleccionada?datos.cierres[semanaSeleccionada.id]:null;
-    $('semanaGanancia').textContent=semanaUnidades?(semanaCompleta?dinero(semanaNeta):'Incompleta'):dinero(0);
+    const semanaUnidades=ventasSemana.reduce((s,v)=>s+v.unidades,0),semanaCompleta=ventasSemana.every(v=>v.completa),semanaBruta=ventasSemana.filter(v=>v.completa).reduce((s,v)=>s+v.bruta,0),semanaNeta=semanaBruta-(semanaUnidades*egresoUnidad),topSemana=ventasSemana.filter(v=>v.unidades>0).sort((a,b)=>b.unidades-a.unidades||a.nombre.localeCompare(b.nombre))[0],cierreSemana=semanaSeleccionada?datos.cierres[semanaSeleccionada.id]:null;
+    $('semanaGanancia').textContent=ventasSemana.length?(semanaCompleta?dinero(semanaNeta):'Incompleta'):dinero(0);
     $('semanaGanancia').classList.toggle('texto-rojo',semanaCompleta&&semanaNeta<0);
     $('semanaNombre').textContent=semanaSeleccionada?(semanaSeleccionada.label||semanaSeleccionada.startDate||'Semana'):'Sin semana';
     $('semanaUnidades').textContent=formato(semanaUnidades);
@@ -793,12 +811,12 @@
     $('alertaSemana').className=cierreSemana&&semanaCompleta?'estado-ok':'estado-aviso';
     $('alertaSemana').innerHTML=!semanaSeleccionada?'No hay una semana seleccionada.':!semanaCompleta?'⚠️ Faltan costos de recetas para calcular la ganancia completa.':cierreSemana?'✓ Semana finalizada: ventas y costos históricos guardados.':'Semana en curso: los pedidos ya aparecen; el público se completa al finalizar.';
     $('totalUnidades').textContent=formato(totalUnidades);$('gananciaBrutaMes').textContent=dinero(brutaTotal);$('totalEgresos').textContent=dinero(egresosTotal);$('gananciaNetaMes').textContent=dinero(netaTotal);$('cajaNeta').classList.toggle('negativo',netaTotal<0);
-    $('avisoRecetas').innerHTML=(faltantes.length?`<div class="estado-aviso">Falta el costo histórico de: <strong>${faltantes.map(v=>escapar(v.nombre)).join(', ')}</strong>. Hasta entonces el resultado mensual es incompleto.</div>`:`<div class="estado-ok">Todos los postres vendidos tienen su costo histórico guardado.</div>`)+(cierresAntiguos.length?'<div class="estado-aviso" style="margin-top:10px">Hay cierres anteriores sin costos congelados. Seleccionalos y tocá <strong>Actualizar cierre</strong>.</div>':'');
+    $('avisoRecetas').innerHTML=(faltantes.length?`<div class="estado-aviso">Falta el costo histórico de: <strong>${faltantes.map(v=>escapar(v.nombre)).join(', ')}</strong>. Hasta entonces el resultado mensual es incompleto.</div>`:`<div class="estado-ok">Todos los postres vendidos o entregados sin venta tienen su costo histórico guardado.</div>`)+(cierresAntiguos.length?'<div class="estado-aviso" style="margin-top:10px">Hay cierres anteriores sin costos congelados. Seleccionalos y tocá <strong>Actualizar cierre</strong>.</div>':'');
     const etiquetaSemana=semanaSeleccionada?`<div class="estado-ok" style="margin-bottom:10px">Mostrando: <strong>${escapar(semanaSeleccionada.label||semanaSeleccionada.startDate||'Semana')}</strong></div>`:'';
     $('repartoPostres').innerHTML=etiquetaSemana+(ventasSemana.length?ventasSemana.sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(v=>{
-      if(!v.completa)return `<div class="receta-card"><div class="receta-top"><div><div class="nombre">${escapar(v.nombre)}</div><div class="detalle">${formato(v.unidades)} unidades · ${formato(v.negocio)} negocio · ${formato(v.publico)} público</div></div><div class="texto-rojo"><strong>Falta costo</strong></div></div></div>`;
+      if(!v.completa)return `<div class="receta-card"><div class="receta-top"><div><div class="nombre">${escapar(v.nombre)}</div><div class="detalle">${formato(v.unidades)} vendidos · ${formato(v.negocio)} negocio · ${formato(v.publico)} público${v.sinVenta?` · ${formato(v.sinVenta)} sin venta`:''}</div></div><div class="texto-rojo"><strong>Falta costo</strong></div></div></div>`;
       const asignados=v.unidades*egresoUnidad,neta=v.bruta-asignados;
-      return `<div class="receta-card"><div class="receta-top"><div><div class="nombre">${escapar(v.nombre)}</div><div class="detalle">${formato(v.unidades)} unidades · ${formato(v.negocio)} negocio · ${formato(v.publico)} público</div></div><div class="total ${neta<0?'texto-rojo':''}">${dinero(neta)}</div></div><div class="reparto"><div><span>Facturación</span><strong>${dinero(v.ingreso)}</strong></div><div><span>Costo histórico de producción</span><strong>− ${dinero(v.costoProduccion)}</strong></div><div><span>Ganancia bruta</span><strong>${dinero(v.bruta)}</strong></div><div><span>Egresos asignados</span><strong>− ${dinero(asignados)}</strong></div><div><span>Ganancia neta estimada</span><strong>${dinero(neta)}</strong></div><div><span>Neta promedio por unidad</span><strong>${dinero(neta/v.unidades)}</strong></div></div></div>`;
+      return `<div class="receta-card"><div class="receta-top"><div><div class="nombre">${escapar(v.nombre)}</div><div class="detalle">${formato(v.unidades)} vendidos · ${formato(v.negocio)} negocio · ${formato(v.publico)} público${v.sinVenta?` · ${formato(v.sinVenta)} sin venta`:''}</div></div><div class="total ${neta<0?'texto-rojo':''}">${dinero(neta)}</div></div><div class="reparto"><div><span>Facturación</span><strong>${dinero(v.ingreso)}</strong></div><div><span>Costo histórico de producción${v.sinVenta?` · incluye ${formato(v.sinVenta)} sin venta`:''}</span><strong>− ${dinero(v.costoProduccion)}</strong></div><div><span>Ganancia bruta</span><strong>${dinero(v.bruta)}</strong></div><div><span>Egresos asignados</span><strong>− ${dinero(asignados)}</strong></div><div><span>Ganancia neta estimada</span><strong>${dinero(neta)}</strong></div>${v.unidades?`<div><span>Neta promedio por unidad vendida</span><strong>${dinero(neta/v.unidades)}</strong></div>`:''}</div></div>`;
     }).join(''):'<div class="lista-vacia">Todavía no hay ventas contabilizadas en esta semana.</div>');
   }
 
