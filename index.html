@@ -465,7 +465,7 @@ function seedState(){
     otherExpenses:[],
     nextWeekOrders:[],
     moneyControl:{cycleId:null,cashOpening:0,transferOpening:0,startedAt:null},
-    weeks:[{id:weekId,label:weekLabel(),startDate:todayISO(),status:'open',orders:[],ownProduction:{},openingStock:{},publicSales:[],publicOrders:[],productionStatus:{}}],
+    weeks:[{id:weekId,label:weekLabel(),startDate:todayISO(),status:'open',orders:[],ownProduction:{},openingStock:{},publicSales:[],publicOrders:[],nonSaleOutflows:[],productionStatus:{}}],
     currentWeekId:weekId
   };
 }
@@ -518,6 +518,7 @@ function loadState(){
   if(!Array.isArray(state.otherExpenses))state.otherExpenses=[];
   if(!Array.isArray(state.nextWeekOrders))state.nextWeekOrders=[];
   if(!state.moneyControl||typeof state.moneyControl!=='object')state.moneyControl={cycleId:null,cashOpening:0,transferOpening:0,startedAt:null};
+  state.weeks.forEach(week=>{if(!Array.isArray(week.nonSaleOutflows))week.nonSaleOutflows=[];});
   migrateOpeningStocks();
   migratePreparedCreamRecipes();
   dedupeStateIngredients();
@@ -591,11 +592,13 @@ function ownTotals(week=currentWeek()){
   return {qty,value};
 }
 function salesTotals(week=currentWeek()) { return {qty:week.publicSales.reduce((s,x)=>s+n(x.qty),0),money:week.publicSales.reduce((s,x)=>s+n(x.qty)*n(x.unitPrice),0)}; }
+function nonSaleOutflowsOf(week=currentWeek()){return Array.isArray(week?.nonSaleOutflows)?week.nonSaleOutflows:[];}
 function stockByProduct(week=currentWeek()){
   const out={};
   Object.entries(week.openingStock||{}).forEach(([pid,qty])=>out[pid]=n(qty));
   Object.entries(week.ownProduction||{}).forEach(([pid,v])=>out[pid]=(out[pid]||0)+n(v.qty));
   week.publicSales.forEach(s=>out[s.productId]=(out[s.productId]||0)-n(s.qty));
+  nonSaleOutflowsOf(week).forEach(row=>out[row.productId]=(out[row.productId]||0)-n(row.qty));
   return out;
 }
 function productionByProduct(week=currentWeek()){
@@ -702,7 +705,7 @@ function renderDashboard(){
     </div>
     <div class="section"><div class="section-title"><h3>Accesos rápidos</h3></div><div class="action-grid">
       ${action('🗓️','Nueva semana','Cerrar y empezar otra',"openNewWeekModal()")}
-      ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=23&vista=ganancias'",'profit')}
+      ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=24&vista=ganancias'",'profit')}
       ${action('🧾','Nuevo pedido','Cargar un negocio',"openOrderModal()")}
       ${action('🍓','Producción propia','Lo que venden ustedes',"go('own')")}
       ${action('📍','Repartos y ventas','Pedidos, stock y movimientos',"setPublicTab('deliveries')")}
@@ -876,19 +879,24 @@ function renderPublic(){
   const rows=activeProducts().map(p=>{const q=Math.max(0,n(stock[p.id])),arrastre=n(w.openingStock?.[p.id]);return `<div class="list-item"><div class="grow"><strong>${esc(p.name)}</strong><small>${money(priceOf(p,'public'))} c/u${arrastre>0?` · ${qtyFmt(arrastre)} pasaron de la semana anterior`:''}</small></div><span class="badge ${q>0?'ok':'gray'}">${qtyFmt(q)} disponibles</span></div>`;}).join('');
   const movements=[
     ...w.publicSales.filter(s=>!s.publicOrderId).map(s=>({type:'sale',at:s.date||'',sale:s})),
-    ...publicOrdersOf(w).filter(o=>o.delivered).map(o=>({type:'publicOrder',at:o.deliveredAt||o.updatedAt||o.createdAt||'',order:o}))
+    ...publicOrdersOf(w).filter(o=>o.delivered).map(o=>({type:'publicOrder',at:o.deliveredAt||o.updatedAt||o.createdAt||'',order:o})),
+    ...nonSaleOutflowsOf(w).map(outflow=>({type:'nonSale',at:outflow.date||'',outflow}))
   ].sort((a,b)=>String(b.at).localeCompare(String(a.at)));
   const sales=movements.map(row=>{
     if(row.type==='publicOrder'){
       const o=row.order,method=orderPaymentMethod(o),date=new Date(row.at).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
       return `<div class="list-item"><div class="grow"><strong>Pedido · ${esc(o.customerName||'Cliente')}</strong><small>${esc(publicOrderSummary(o))}</small><small>${date} · entregado · <span class="badge ${paymentBadgeClass(method)}">${paymentLabel(method)}</span></small></div><div class="amount">${money(publicOrderMoney(o))}</div><button class="icon-btn" onclick="showPublicOrder('${o.id}')">📍</button></div>`;
     }
+    if(row.type==='nonSale'){
+      const outflow=row.outflow,date=new Date(row.at).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+      return `<div class="list-item"><div class="grow"><strong>${esc(product(outflow.productId)?.name||'Postre')} × ${qtyFmt(outflow.qty)}</strong><small>${date} · ${esc(nonSaleReasonLabel(outflow.reason))}</small>${outflow.note?`<small>${esc(outflow.note)}</small>`:''}<small><span class="badge gray">SIN VENTA</span></small></div><div class="amount">$0</div><button class="icon-btn" onclick="deleteNonSaleOutflow('${outflow.id}')">🗑</button></div>`;
+    }
     const s=row.sale,method=orderPaymentMethod(s),date=new Date(row.at).toLocaleString('es-AR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
     return `<div class="list-item"><div class="grow"><strong>${esc(product(s.productId)?.name||'Postre')} × ${s.qty}</strong><small>${date} · ${money(s.unitPrice)} c/u</small><small><span class="badge ${paymentBadgeClass(method)}">${paymentLabel(method)}</span></small></div><div class="amount">${money(s.qty*s.unitPrice)}</div><button class="icon-btn" onclick="deleteSale('${s.id}')">🗑</button></div>`;
   }).join('');
   return `${header}
-    <div class="section"><div class="section-title"><h3>Stock disponible</h3><button class="btn small ghost" onclick="go('own')">+ Producción propia</button></div><div class="list">${rows||'<div class="empty"><strong>No hay postres cargados</strong><div>Cargá primero la producción propia.</div></div>'}</div></div>
-    <div class="section"><div class="section-title"><h3>Últimos movimientos de venta</h3></div><div class="list">${sales||'<div class="empty">Todavía no registraste ventas ni entregaste pedidos al público.</div>'}</div></div>`;
+    <div class="section"><div class="section-title"><h3>Stock disponible</h3><div class="toolbar" style="margin:0"><button class="btn small ghost" onclick="go('own')">+ Producción propia</button><button class="btn small primary" onclick="openNonSaleModal()">− Salida sin venta</button></div></div><div class="list">${rows||'<div class="empty"><strong>No hay postres cargados</strong><div>Cargá primero la producción propia.</div></div>'}</div></div>
+    <div class="section"><div class="section-title"><h3>Últimos movimientos</h3></div><div class="list">${sales||'<div class="empty">Todavía no registraste ventas, entregas ni salidas sin venta.</div>'}</div></div>`;
 }
 function openSaleModal(selectedProductId=''){
   if(!ensureOpenWeek()) return;
@@ -899,6 +907,24 @@ function openSaleModal(selectedProductId=''){
 function updateSaleProduct(){const pid=$('#saleProduct')?.value,p=product(pid),stock=n(stockByProduct()[pid]),reserved=n(businessQtyByProduct()[pid]);if(p&&$('#salePrice'))$('#salePrice').value=priceOf(p,'public');if($('#saleQty'))$('#saleQty').max=stock;if($('#saleStockText'))$('#saleStockText').textContent=`Podés vender ${qtyFmt(stock)}. Hay ${qtyFmt(reserved)} reservados para negocios y no se tocan desde acá.`;}
 function saveSale(){const w=currentWeek(), pid=$('#saleProduct').value, qty=int($('#saleQty').value), pr=n($('#salePrice').value), stock=n(stockByProduct(w)[pid]),paymentMethod=$('#salePayment').value==='transfer'?'transfer':'cash'; if(qty<1)return showToast('Cantidad inválida'); if(qty>stock)return showToast(`Solo podés vender ${stock}; lo de negocios está reservado`); w.publicSales.push({id:uid('sale'),productId:pid,qty,unitPrice:pr,paymentMethod,moneyCycleId:activeMoneyCycle(),date:new Date().toISOString()}); saveState(false);closeModal();render();showToast(`Venta cobrada en ${paymentLabel(paymentMethod).toLowerCase()} · quedan ${qtyFmt(stock-qty)}`);}
 function deleteSale(id){if(!confirm('¿Eliminar esta venta?'))return;const w=currentWeek();w.publicSales=w.publicSales.filter(s=>s.id!==id);saveState(false);render();showToast('Venta eliminada');}
+
+function nonSaleReasonLabel(reason){return {raffle:'Sorteo',own:'Consumo propio',gift:'Regalo',waste:'Pérdida / rotura'}[reason]||'Salida sin venta';}
+function openNonSaleModal(){
+  if(!ensureOpenWeek())return;
+  const stock=stockByProduct(),options=Object.entries(stock).filter(([,qty])=>n(qty)>0).sort((a,b)=>(product(a[0])?.name||'').localeCompare(product(b[0])?.name||'')).map(([pid,qty])=>`<option value="${pid}">${esc(product(pid)?.name||'Postre')} · stock ${qtyFmt(qty)}</option>`).join('');
+  if(!options)return showToast('No hay stock disponible');
+  modal('Salida sin venta',`<div class="field"><label>Postre</label><select id="nonSaleProduct" class="select" onchange="updateNonSaleStock()">${options}</select></div><div id="nonSaleStockText" class="note" style="margin-bottom:12px"></div><div class="form-row"><div class="field"><label>Cantidad</label><input id="nonSaleQty" class="input" type="number" min="1" step="1" value="1"></div><div class="field"><label>Motivo</label><select id="nonSaleReason" class="select"><option value="raffle">Sorteo</option><option value="own">Consumo propio</option><option value="gift">Regalo</option><option value="waste">Pérdida / rotura</option></select></div></div><div class="field"><label>Nota (opcional)</label><textarea id="nonSaleNote" class="textarea" placeholder="Ej: sorteo de Instagram"></textarea></div><div class="note" style="margin-bottom:12px">Se descontará del stock sin sumar dinero ni ventas. Su costo de elaboración se tendrá en cuenta al calcular la ganancia.</div><button class="btn primary wide" onclick="saveNonSaleOutflow()">Confirmar salida</button>`);
+  updateNonSaleStock();
+}
+function updateNonSaleStock(){const pid=$('#nonSaleProduct')?.value,stock=n(stockByProduct()[pid]);if($('#nonSaleQty'))$('#nonSaleQty').max=stock;if($('#nonSaleStockText'))$('#nonSaleStockText').textContent=`Tenés ${qtyFmt(stock)} disponibles. Esta salida no contará como venta.`;}
+function saveNonSaleOutflow(){
+  const week=currentWeek(),productId=$('#nonSaleProduct').value,qty=int($('#nonSaleQty').value),stock=n(stockByProduct(week)[productId]),reason=$('#nonSaleReason').value;
+  if(qty<1)return showToast('Cantidad inválida');
+  if(qty>stock)return showToast(`Solo tenés ${qtyFmt(stock)} disponibles`);
+  week.nonSaleOutflows=nonSaleOutflowsOf(week);week.nonSaleOutflows.push({id:uid('outflow'),productId,qty,reason,note:$('#nonSaleNote').value.trim(),date:new Date().toISOString()});
+  saveState(false);closeModal();render();showToast(`${nonSaleReasonLabel(reason)} registrado · quedan ${qtyFmt(stock-qty)}`);
+}
+function deleteNonSaleOutflow(id){if(!ensureOpenWeek())return;if(!confirm('¿Eliminar esta salida sin venta? El postre volverá al stock.'))return;const week=currentWeek();week.nonSaleOutflows=nonSaleOutflowsOf(week).filter(row=>row.id!==id);saveState(false);render();showToast('Salida eliminada y stock restaurado');}
 
 function publicOrdersOf(week=currentWeek()){return Array.isArray(week?.publicOrders)?week.publicOrders:[];}
 function publicOrder(id,week=currentWeek()){return publicOrdersOf(week).find(o=>o.id===id);}
@@ -1184,7 +1210,8 @@ function weekHasActivity(w){
   const pedidos=(w.orders||[]).some(o=>(o.items||[]).some(item=>n(item.qty)>0));
   const produccion=Object.values(w.ownProduction||{}).some(item=>n(item?.qty)>0);
   const publico=(w.publicSales||[]).some(item=>n(item.qty)>0);
-  return pedidos||produccion||publico;
+  const salidas=nonSaleOutflowsOf(w).some(item=>n(item.qty)>0);
+  return pedidos||produccion||publico||salidas;
 }
 function weekHasCostClose(id){
   try{return Boolean(JSON.parse(localStorage.getItem('toqueDulce_calculadoraCostos_v1'))?.cierres?.[id]);}
@@ -1195,7 +1222,7 @@ function weekShouldClose(w){
   const inicio=new Date(`${w.startDate}T12:00:00`),hoy=new Date();
   return Number.isFinite(inicio.getTime())&&Math.floor((hoy-inicio)/86400000)>=6;
 }
-function openWeekClose(id){window.location.href='Costos.html?v=23&cerrar='+encodeURIComponent(id);}
+function openWeekClose(id){window.location.href='Costos.html?v=24&cerrar='+encodeURIComponent(id);}
 function openNewWeekModal(){
   const activa=currentWeek();
   if(activa?.status==='open'&&weekHasActivity(activa)&&!weekHasCostClose(activa.id)){
@@ -1212,7 +1239,7 @@ function createWeek(){
   const id=uid('week');
   const pedidosPreparados=(state.nextWeekOrders||[]).map(o=>({...JSON.parse(JSON.stringify(o)),paymentMethod:'pending',paidAt:null,moneyCycleId:null,movedToWeekAt:new Date().toISOString()}));
   const sobrantesGuardados=activa?.closingStock&&typeof activa.closingStock==='object'?activa.closingStock:{},sobrantesAnteriores=Object.values(sobrantesGuardados).some(qty=>n(qty)>0)?{...sobrantesGuardados}:closingStockForWeek(activa?.id);
-  state.weeks.push({id,label,startDate:date,status:'open',orders:pedidosPreparados,ownProduction:{},openingStock:sobrantesAnteriores,publicSales:[],publicOrders:[],productionStatus:{}});
+  state.weeks.push({id,label,startDate:date,status:'open',orders:pedidosPreparados,ownProduction:{},openingStock:sobrantesAnteriores,publicSales:[],publicOrders:[],nonSaleOutflows:[],productionStatus:{}});
   state.nextWeekOrders=[];
   state.currentWeekId=id;saveState(false);closeModal();currentView='dashboard';render();showToast('Nueva semana creada');
 }
@@ -1241,7 +1268,7 @@ function resetApp(){if(!confirm('¿Restablecer toda la app? Esto elimina los dat
 function renderMore(){
   const w=currentWeek(),avisoCierre=weekShouldClose(w)?`<div class="note" style="margin-bottom:12px"><strong>Semana pendiente de finalizar</strong><br>Completá el cierre para guardar la ganancia correcta.<button class="btn primary wide" style="margin-top:10px" onclick="openWeekClose('${w.id}')">Finalizar semana</button></div>`:'';
   return `${hero('Más','Administración de la app')}${avisoCierre}<div class="action-grid">
-    ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=23&vista=ganancias'",'profit')}
+    ${action('💰','Ganancias','Resumen semanal y mensual',"window.location.href='Costos.html?v=24&vista=ganancias'",'profit')}
     ${action('🏪','Negocios','Agregar o editar clientes',"go('businesses')")}
     ${action('🍰','Postres y recetas','Variedades y cantidades',"go('products')")}
     ${action('🥛','Ingredientes','Precio, envase y unidad',"go('ingredients')")}
